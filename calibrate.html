@@ -31,15 +31,18 @@
       touch-action: manipulation;
     }
     .toolbar button:active, .point-row button:active { background: #39412f; }
+    .toolbar button:disabled { opacity: .45; cursor: not-allowed; }
     .toolbar .primary { background: #d99e2b; color: #211a0c; border-color: #f2c45e; font-weight: 700; }
     .file-input { display: none; }
+    .map-select { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 8px auto 10px; color: #dce2cf; font-size: 13px; }
+    .map-select select { min-height: 38px; border: 1px solid #59604e; border-radius: 8px; padding: 5px 10px; background: #20231c; color: #f4f2e8; font: inherit; }
     .workarea { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 12px; align-items: start; }
     .map-card, .side-card { border: 1px solid #34392d; border-radius: 12px; background: #20231c; }
     .map-card { padding: 8px; display: grid; place-items: center; }
     .map {
       position: relative;
-      width: min(100%, calc((100svh - 210px) * 1.1806));
-      aspect-ratio: 1000 / 847;
+      width: min(100%, calc((100svh - 210px) * var(--map-aspect, 1.1806)));
+      aspect-ratio: var(--map-aspect, 1.1806);
       overflow: hidden;
       background: #151711;
       cursor: crosshair;
@@ -71,6 +74,8 @@
     }
     .marker:active { cursor: grabbing; }
     .marker:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+    .map-alias { position: absolute; left: var(--x); top: var(--y); z-index: 2; transform: translate(-50%, 16px); max-width: 140px; overflow: hidden; padding: 2px 5px; border-radius: 5px; background: #11130fe8; color: #fff; font-size: 10px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+    .map-alias[hidden] { display: none; }
     .side-card { padding: 12px; }
     .side-card h2 { margin: 0 0 5px; font-size: 15px; }
     .side-card p { margin: 0 0 10px; color: #b9bdad; font-size: 12px; line-height: 1.5; }
@@ -83,11 +88,22 @@
     .point-row button { min-height: 34px; padding: 4px; color: #ffccbd; }
     .status { min-height: 18px; margin-top: 9px; color: #cbd9ae; font-size: 12px; }
     .data { width: 100%; min-height: 74px; margin-top: 8px; resize: vertical; border: 1px solid #42483a; border-radius: 8px; padding: 8px; background: #151711; color: #dce2cf; font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .rules { min-height: 110px; }
+    .rule-validation { min-height: 18px; margin-top: 5px; color: #cbd9ae; font-size: 12px; }
+    .rule-validation.error { color: #ff9e89; }
+    .rule-validation.valid { color: #a9dc9b; }
+    .preview-controls { display: flex; gap: 7px; margin: 7px 0 12px; }
+    .preview-controls select, .preview-controls button { min-height: 38px; border: 1px solid #59604e; border-radius: 8px; padding: 6px 9px; background: #282d23; color: #f4f2e8; font: inherit; }
+    .preview-controls select { flex: 1; min-width: 0; }
+    .preview-controls button { cursor: pointer; white-space: nowrap; }
+    .preview-controls button:disabled, .preview-controls select:disabled { opacity: .45; cursor: not-allowed; }
+    .marker[data-combo="match"] { z-index: 3; background: #43bd65; border-color: #c9ff9e; transform: translate(-50%, -50%) scale(1.2); }
+    .marker[data-combo="other"] { opacity: .16; filter: grayscale(1); }
     @media (max-width: 720px) {
       header { padding-top: max(12px, env(safe-area-inset-top)); }
       .layout { padding-inline: 8px; }
       .workarea { grid-template-columns: 1fr; }
-      .map { width: min(100%, calc((100svh - 245px) * 1.1806)); }
+      .map { width: min(100%, calc((100svh - 245px) * var(--map-aspect, 1.1806))); }
       .side-card { padding: 10px; }
       .point-list { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 22svh; }
     }
@@ -95,8 +111,14 @@
 </head>
 <body>
   <header>
-    <h1>军工厂地图标定</h1>
-    <p>点击地图放置密码机标记；按住标记拖动微调。坐标会自动保存在本机浏览器。</p>
+    <h1 id="mapTitle">地图标定</h1>
+    <p>点击地图放置密码机标记；按住标记拖动微调。坐标按地图分别保存在本机浏览器。</p>
+    <label class="map-select" for="mapSelect">当前地图
+      <select id="mapSelect">
+        <option value="ArmsFactory">军工厂</option>
+        <option value="Sacred_Heart_Hospital">圣心医院</option>
+      </select>
+    </label>
   </header>
   <main class="layout">
     <nav class="toolbar" aria-label="标定操作">
@@ -112,7 +134,7 @@
     <div class="workarea">
       <section class="map-card" aria-label="地图标定画布">
         <div class="map" id="map">
-          <img class="map-image" src="assests/maps/ArmsFactory.webp" alt="军工厂俯视地图">
+          <img class="map-image" id="mapImage" src="assests/maps/ArmsFactory.webp" alt="军工厂俯视地图">
         </div>
       </section>
       <aside class="side-card">
@@ -120,51 +142,227 @@
         <p>坐标为地图宽高的比例值，范围 0–1；拖动地图上的标记可微调。可粘贴 JSON 后点“导入下方 JSON”，也可导入 JSON 文件。</p>
         <div class="point-list" id="pointList"><div class="empty">点击地图添加第一个点位</div></div>
         <div class="status" id="status" aria-live="polite"></div>
+        <h2>位置规律</h2>
+        <p>严格格式：每组 7 个点位编号，用英文逗号分隔，并以英文分号结束；每组一行。编号对应上方列表。</p>
+        <textarea class="data rules" id="rules" aria-label="地图刷新位置规律" spellcheck="false" placeholder="1,2,3,4,5,6,7;&#10;1,2,3,4,5,6,8;"></textarea>
+        <div class="rule-validation" id="ruleValidation" role="status" aria-live="polite"></div>
+        <div class="preview-controls" aria-label="机子组合预览">
+          <select id="previewGroup" aria-label="选择机子出现组合" disabled><option value="">先填写有效组合</option></select>
+          <button id="previewToggle" type="button" disabled>高亮预览</button>
+        </div>
         <textarea class="data" id="data" aria-label="坐标 JSON，可粘贴待导入的 JSON" spellcheck="false" placeholder="在此粘贴候选点 JSON，再点击“导入下方 JSON”"></textarea>
       </aside>
     </div>
   </main>
   <script>
     (() => {
-      const STORAGE_KEY = "identityv-armsfactory-calibration-v1";
+      const MAPS = {
+        ArmsFactory: {
+          id: "ArmsFactory", name: "军工厂", image: "assests/maps/ArmsFactory.webp",
+          dataFile: "assests/data/ArmsFactory-cipher-candidates.json",
+          downloadName: "ArmsFactory-cipher-candidates.json",
+          storageKey: "identityv-armsfactory-calibration-v1",
+          defaultRulesText: "1,9,11,8,4,5,6;\n1,2,7,11,4,5,6;\n2,9,10,8,5,6,4;\n1,3,10,7,8,5,12;\n9,3,4,5,8,11,12;"
+        },
+        Sacred_Heart_Hospital: {
+          id: "Sacred_Heart_Hospital", name: "圣心医院", image: "assests/maps/Sacred_Heart_Hospital.webp",
+          dataFile: "assests/data/Sacred_Heart_Hospital-cipher-candidates.json",
+          downloadName: "Sacred_Heart_Hospital-cipher-candidates.json",
+          storageKey: "identityv-sacred-heart-hospital-calibration-v1"
+        }
+      };
+      const ACTIVE_MAP_KEY = "identityv-calibration-active-map-v1";
+      const mapSelect = document.querySelector("#mapSelect");
+      const mapTitle = document.querySelector("#mapTitle");
+      const mapImage = document.querySelector("#mapImage");
       const map = document.querySelector("#map");
       const list = document.querySelector("#pointList");
       const data = document.querySelector("#data");
+      const rules = document.querySelector("#rules");
+      const ruleValidation = document.querySelector("#ruleValidation");
+      const previewGroup = document.querySelector("#previewGroup");
+      const previewToggle = document.querySelector("#previewToggle");
+      const copyButton = document.querySelector("#copy");
+      const downloadButton = document.querySelector("#download");
       const status = document.querySelector("#status");
       const count = document.querySelector("#count");
       const addModeButton = document.querySelector("#addMode");
       const fileInput = document.querySelector("#fileInput");
       let addMode = true;
-      let points = loadPoints();
+      let currentMapId = "ArmsFactory";
+      try {
+        const savedMapId = localStorage.getItem(ACTIVE_MAP_KEY);
+        if (MAPS[savedMapId]) currentMapId = savedMapId;
+      } catch {}
+      let points = [];
+      let distributionRulesText = "";
+      let previewingGroup = null;
       let draggingId = null;
+      let loadSequence = 0;
 
-      function loadPoints() {
+      function normalizePoints(records) {
+        if (!Array.isArray(records)) return [];
+        return records.filter(point => Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y)) && Number(point.x) >= 0 && Number(point.x) <= 1 && Number(point.y) >= 0 && Number(point.y) <= 1)
+          .map((point, index) => ({
+            id: point.id ?? (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}-${index}`),
+            x: Number(point.x), y: Number(point.y), alias: String(point.alias ?? point.name ?? point.label ?? "").slice(0, 32)
+          }));
+      }
+
+      function loadStoredPoints(storageKey) {
         try {
-          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-          return Array.isArray(saved) ? saved.filter(p => Number.isFinite(p.x) && Number.isFinite(p.y)) : [];
+          const raw = localStorage.getItem(storageKey);
+          return raw === null ? null : normalizePoints(JSON.parse(raw));
         } catch { return []; }
       }
 
       function outputObject() {
+        const mapInfo = MAPS[currentMapId];
+        const validation = validateDistributionRules(distributionRulesText);
         return {
-          map: "ArmsFactory",
-          image: "assests/maps/ArmsFactory.webp",
+          map: mapInfo.id,
+          image: mapInfo.image,
           coordinateSystem: "normalized (0-1, origin at top-left)",
-          candidates: points.map((p, i) => ({ id: i + 1, x: +p.x.toFixed(4), y: +p.y.toFixed(4), alias: p.alias || "" }))
+          candidates: points.map((p, i) => ({ id: i + 1, x: +p.x.toFixed(4), y: +p.y.toFixed(4), alias: p.alias || "" })),
+          distributionRulesText,
+          distributions: validation.valid ? validation.groups : []
         };
       }
 
+      function validateDistributionRules(text) {
+        const source = text.trim();
+        if (!source) return { valid: true, groups: [], error: "" };
+        if (!source.endsWith(";")) return { valid: false, groups: [], error: "每组末尾都必须加英文分号 ;" };
+        const entries = source.slice(0, -1).split(";");
+        const groups = [];
+        for (let index = 0; index < entries.length; index++) {
+          const entry = entries[index].trim();
+          if (!entry) return { valid: false, groups: [], error: `第 ${index + 1} 组为空` };
+          const tokens = entry.split(",").map(token => token.trim());
+          if (tokens.length !== 7) return { valid: false, groups: [], error: `第 ${index + 1} 组必须恰好填写 7 个编号` };
+          if (tokens.some(token => !/^\d+$/u.test(token))) return { valid: false, groups: [], error: `第 ${index + 1} 组只能使用正整数和英文逗号 ,` };
+          const ids = tokens.map(Number);
+          if (ids.some(id => id < 1)) return { valid: false, groups: [], error: `第 ${index + 1} 组编号必须从 1 开始` };
+          if (new Set(ids).size !== ids.length) return { valid: false, groups: [], error: `第 ${index + 1} 组有重复编号` };
+          if (ids.some(id => id > points.length)) return { valid: false, groups: [], error: `第 ${index + 1} 组编号超出当前候选点数量（${points.length}）` };
+          groups.push({ name: `第${index + 1}组`, points: ids });
+        }
+        return { valid: true, groups, error: "" };
+      }
+
+      function updateRuleValidation() {
+        const validation = validateDistributionRules(rules.value);
+        ruleValidation.classList.toggle("error", !validation.valid);
+        ruleValidation.classList.toggle("valid", validation.valid && Boolean(rules.value.trim()));
+        ruleValidation.textContent = !validation.valid
+          ? `格式错误：${validation.error}`
+          : (rules.value.trim() ? `格式正确：${validation.groups.length} 组` : "尚未填写分布组（可留空）");
+        copyButton.disabled = !validation.valid;
+        downloadButton.disabled = !validation.valid;
+        const selected = previewGroup.value;
+        previewGroup.replaceChildren();
+        if (validation.valid && validation.groups.length) {
+          validation.groups.forEach((group, index) => {
+            const option = document.createElement("option");
+            option.value = String(index);
+            option.textContent = `${group.name}（${group.points.length}处）`;
+            previewGroup.append(option);
+          });
+          previewGroup.disabled = false;
+          previewToggle.disabled = false;
+          previewGroup.value = validation.groups[Number(selected)] ? selected : "0";
+          if (previewingGroup !== null && !validation.groups[previewingGroup]) previewingGroup = null;
+        } else {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = validation.valid ? "先填写有效组合" : "格式正确后可预览";
+          previewGroup.append(option);
+          previewGroup.disabled = true;
+          previewToggle.disabled = true;
+          previewingGroup = null;
+        }
+        renderComboPreview(validation);
+        return validation.valid;
+      }
+
+      function renderComboPreview(validation = validateDistributionRules(rules.value)) {
+        map.querySelectorAll(".marker").forEach(marker => marker.removeAttribute("data-combo"));
+        previewToggle.textContent = previewingGroup === null ? "高亮预览" : "关闭预览";
+        if (previewingGroup === null || !validation.valid || !validation.groups[previewingGroup]) return;
+        const members = new Set(validation.groups[previewingGroup].points);
+        map.querySelectorAll(".marker").forEach(marker => {
+          marker.dataset.combo = members.has(Number(marker.dataset.pointIndex)) ? "match" : "other";
+        });
+      }
+
       function savePoints() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); } catch { /* Private browsing may disable local storage. */ }
+        try { localStorage.setItem(MAPS[currentMapId].storageKey, JSON.stringify(points)); } catch { /* Private browsing may disable local storage. */ }
         data.value = JSON.stringify(outputObject(), null, 2);
+      }
+
+      function saveRules() {
+        distributionRulesText = rules.value;
+        try { localStorage.setItem(`${MAPS[currentMapId].storageKey}-rules`, distributionRulesText); } catch {}
+        data.value = JSON.stringify(outputObject(), null, 2);
+        updateRuleValidation();
+      }
+
+      function setMapAspectFromImage() {
+        if (mapImage.naturalWidth && mapImage.naturalHeight) {
+          map.style.setProperty("--map-aspect", String(mapImage.naturalWidth / mapImage.naturalHeight));
+        }
+      }
+
+      async function loadMap(mapId, message = "") {
+        const mapInfo = MAPS[mapId];
+        if (!mapInfo) return;
+        previewingGroup = null;
+        const sequence = ++loadSequence;
+        currentMapId = mapId;
+        mapSelect.value = mapId;
+        mapTitle.textContent = `${mapInfo.name}地图标定`;
+        document.title = `${mapInfo.name}地图标定工具`;
+        mapImage.alt = `${mapInfo.name}俯视地图`;
+        mapImage.onload = setMapAspectFromImage;
+        mapImage.onerror = () => {
+          if (sequence === loadSequence) status.textContent = `底图加载失败：${mapInfo.image}`;
+        };
+        mapImage.src = mapInfo.image;
+        setMapAspectFromImage();
+        try { localStorage.setItem(ACTIVE_MAP_KEY, mapId); } catch {}
+
+        let existing = {};
+        try {
+          const response = await fetch(mapInfo.dataFile);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          existing = await response.json();
+        } catch {}
+        const stored = loadStoredPoints(mapInfo.storageKey);
+        points = stored !== null ? stored : normalizePoints(existing.candidates || existing.points || []);
+        let savedRules = null;
+        try { savedRules = localStorage.getItem(`${mapInfo.storageKey}-rules`); } catch {}
+        distributionRulesText = savedRules !== null
+          ? savedRules
+          : (typeof existing.distributionRulesText === "string"
+            ? existing.distributionRulesText
+            : (Array.isArray(existing.distributions)
+              ? existing.distributions.map(group => `${(group.points || []).join(",")};`).join("\n")
+              : mapInfo.defaultRulesText || ""));
+        rules.value = distributionRulesText;
+        if (sequence !== loadSequence) return;
+        render(message || `已切换到${mapInfo.name}，坐标与其他地图分开保存`);
       }
 
       function importJsonText(text) {
         let parsed;
         try { parsed = JSON.parse(text); }
         catch { status.textContent = "JSON 格式无效，请检查内容后重试"; return false; }
+        if (parsed?.map && parsed.map !== MAPS[currentMapId].id) {
+          status.textContent = `此 JSON 属于 ${parsed.map}，请先切换到对应地图再导入`;
+          return false;
+        }
         const records = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.candidates) ? parsed.candidates : parsed?.points);
-        if (!Array.isArray(records) || !records.length) {
+        if (!Array.isArray(records)) {
           status.textContent = "JSON 中没有找到 candidates 或 points 数组";
           return false;
         }
@@ -183,12 +381,31 @@
         }
         if (points.length && !confirm(`导入的 ${imported.length} 个点位会替换当前 ${points.length} 个点位，继续吗？`)) return false;
         points = imported;
+        distributionRulesText = typeof parsed.distributionRulesText === "string"
+          ? parsed.distributionRulesText
+          : (Array.isArray(parsed.distributions)
+            ? parsed.distributions.map(group => `${(group.points || []).join(",")};`).join("\n")
+            : "");
+        rules.value = distributionRulesText;
+        saveRules();
         render(`已导入 ${points.length} 个点位及其别称`);
         return true;
       }
 
       document.querySelector("#chooseFile").addEventListener("click", () => fileInput.click());
       document.querySelector("#importText").addEventListener("click", () => importJsonText(data.value));
+      mapSelect.addEventListener("change", () => loadMap(mapSelect.value));
+      rules.addEventListener("input", saveRules);
+      previewToggle.addEventListener("click", () => {
+        previewingGroup = previewingGroup === null ? Number(previewGroup.value) : null;
+        renderComboPreview();
+      });
+      previewGroup.addEventListener("change", () => {
+        if (previewingGroup !== null) {
+          previewingGroup = Number(previewGroup.value);
+          renderComboPreview();
+        }
+      });
       fileInput.addEventListener("change", async () => {
         const file = fileInput.files?.[0];
         if (!file) return;
@@ -198,7 +415,7 @@
       });
 
       function render(message = "") {
-        map.querySelectorAll(".marker").forEach(el => el.remove());
+        map.querySelectorAll(".marker, .map-alias").forEach(el => el.remove());
         points.forEach((point, index) => {
           const marker = document.createElement("button");
           marker.type = "button";
@@ -208,9 +425,17 @@
           marker.style.setProperty("--y", `${point.y * 100}%`);
           marker.setAttribute("aria-label", `密码机标记 ${index + 1}，按住拖动`);
           marker.dataset.pointId = point.id;
+          marker.dataset.pointIndex = String(index + 1);
           marker.addEventListener("pointerdown", startDrag);
           marker.addEventListener("click", event => event.stopPropagation());
-          map.append(marker);
+          const mapAlias = document.createElement("span");
+          mapAlias.className = "map-alias";
+          mapAlias.dataset.pointIndex = String(index + 1);
+          mapAlias.style.setProperty("--x", `${point.x * 100}%`);
+          mapAlias.style.setProperty("--y", `${point.y * 100}%`);
+          mapAlias.textContent = point.alias || "";
+          mapAlias.hidden = !mapAlias.textContent;
+          map.append(marker, mapAlias);
         });
 
         count.textContent = points.length;
@@ -239,6 +464,11 @@
             alias.setAttribute("aria-label", `编辑点位 ${index + 1} 的别称`);
             alias.addEventListener("input", () => {
               point.alias = alias.value;
+              const mapAlias = map.querySelector(`.map-alias[data-point-index="${index + 1}"]`);
+              if (mapAlias) {
+                mapAlias.textContent = point.alias;
+                mapAlias.hidden = !point.alias;
+              }
               savePoints();
             });
             const remove = document.createElement("button");
@@ -255,6 +485,7 @@
         }
 
         savePoints();
+        updateRuleValidation();
         if (message) status.textContent = message;
       }
 
@@ -332,13 +563,13 @@
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = "ArmsFactory-points.json";
+        link.download = MAPS[currentMapId].downloadName;
         link.click();
         URL.revokeObjectURL(url);
         status.textContent = "坐标 JSON 已下载";
       });
 
-      render();
+      loadMap(currentMapId, `已载入${MAPS[currentMapId].name}数据`);
     })();
   </script>
 </body>

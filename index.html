@@ -18,6 +18,8 @@
     header { flex: none; padding: 12px 12px 8px; text-align: center; }
     h1 { margin: 0; font-size: 17px; font-weight: 650; }
     .instructions { margin: 4px 0 9px; color: #bdc1b2; font-size: 12px; }
+    .map-select { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 0 auto 9px; color: #dce2cf; font-size: 12px; }
+    .map-select select { min-height: 34px; border: 1px solid #59604e; border-radius: 8px; padding: 4px 9px; background: #20231c; color: #f4f2e8; font: inherit; }
     .legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 5px 12px; color: #e6e6dc; font-size: 11px; }
     .legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
     .swatch { width: 13px; height: 13px; display: inline-grid; place-items: center; border: 1px solid #f3f0dc; border-radius: 50%; color: #11130f; font-size: 9px; font-weight: 800; }
@@ -30,11 +32,11 @@
     .size-control { display: flex; align-items: center; justify-content: center; gap: 9px; margin: 10px auto 0; color: #d4d7cb; font-size: 12px; }
     .size-control input { width: min(45vw, 190px); accent-color: #aeb89d; }
     .size-value { min-width: 38px; text-align: left; color: #f4f2e8; font-variant-numeric: tabular-nums; }
-    .toolbar { display: flex; justify-content: center; margin-top: 7px; }
+    .toolbar { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
     .toolbar button { min-height: 32px; padding: 4px 10px; border: 1px solid #666b5d; border-radius: 9px; background: #282d23; color: #f4f2e8; font: inherit; font-size: 12px; }
     .toolbar button:disabled { opacity: .45; cursor: not-allowed; }
     main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 0 8px 10px; }
-    .map { position: relative; width: min(100%, calc((100svh - 185px) * 1.1806)); aspect-ratio: 1000 / 847; background: #20241e; }
+    .map { position: relative; width: min(100%, calc((100svh - 220px) * var(--map-aspect, 1.1806))); aspect-ratio: var(--map-aspect, 1.1806); background: #20241e; }
     .map-image { display: block; width: 100%; height: 100%; object-fit: contain; }
     .candidate {
       position: absolute; left: var(--x); top: var(--y);
@@ -63,14 +65,20 @@
     .message.show { opacity: 1; }
     @media (min-width: 700px) {
       header { padding-top: 16px; }
-      .map { width: min(92vw, calc((100svh - 195px) * 1.1806)); }
+      .map { width: min(92vw, calc((100svh - 230px) * var(--map-aspect, 1.1806))); }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>军工厂 · 密码机记录</h1>
+    <h1 id="pageTitle">密码机记录</h1>
     <p class="instructions">点击候选点切换状态；长按约半秒标记问号。状态保存在本机浏览器。</p>
+    <label class="map-select" for="map-select">当前地图
+      <select id="map-select">
+        <option value="ArmsFactory">军工厂</option>
+        <option value="Sacred_Heart_Hospital">圣心医院</option>
+      </select>
+    </label>
     <div class="legend" aria-label="状态图例">
       <span class="legend-item"><i class="swatch possible"></i>可能刷新</span>
       <span class="legend-item"><i class="swatch question">?</i>位置不确定</span>
@@ -86,55 +94,138 @@
     </label>
     <label class="size-control"><input id="show-aliases" type="checkbox">显示密码机别称</label>
     <div class="inference" id="inference" role="status" aria-live="polite"><strong>分布推测</strong><span id="inference-text">正在读取候选点…</span></div>
-    <div class="toolbar"><button id="apply-inference" type="button" disabled>一键 Apply：推测必有 → 白色</button><button id="reset" type="button">重置本局</button></div>
+    <div class="toolbar">
+      <button id="undo" type="button" title="Ctrl+Z" disabled>撤销</button>
+      <button id="redo" type="button" title="Ctrl+Shift+Z" disabled>重做</button>
+      <button id="apply-inference" type="button" disabled>一键 Apply：推测必有 → 白色</button>
+      <button id="reset" type="button">重置本局</button>
+    </div>
   </header>
   <main>
-    <div class="map" id="map" aria-label="军工厂地图">
-      <img class="map-image" src="assests/maps/ArmsFactory.webp" alt="军工厂俯视地图">
+    <div class="map" id="map" aria-label="地图">
+      <img class="map-image" id="map-image" src="assests/maps/ArmsFactory.webp" alt="军工厂俯视地图">
     </div>
   </main>
   <div class="message" id="message" role="status" aria-live="polite"></div>
   <script>
     (() => {
-      const DATA_URL = "assests/data/ArmsFactory-cipher-candidates.json";
-      const STORAGE_KEY = "identityv-armsfactory-match-v1";
+      const MAPS = {
+        ArmsFactory: {
+          name: "军工厂", image: "assests/maps/ArmsFactory.webp",
+          dataUrl: "assests/data/ArmsFactory-cipher-candidates.json",
+          storageKey: "identityv-armsfactory-match-v1"
+        },
+        Sacred_Heart_Hospital: {
+          name: "圣心医院", image: "assests/maps/Sacred_Heart_Hospital.webp",
+          dataUrl: "assests/data/Sacred_Heart_Hospital-cipher-candidates.json",
+          storageKey: "identityv-sacred-heart-hospital-match-v1"
+        }
+      };
+      const ACTIVE_MAP_KEY = "identityv-active-map-v1";
       const SIZE_KEY = "identityv-armsfactory-marker-size-v1";
       const ALIAS_KEY = "identityv-armsfactory-show-aliases-v1";
       const STATES = ["possible", "confirmed", "decoding", "nearly", "complete"];
       const POSITIVE_STATES = new Set(["confirmed", "decoding", "nearly", "complete"]);
-      const DISTRIBUTIONS = [
-        { id: 1, points: [1, 9, 11, 8, 4, 5, 6] },
-        { id: 2, points: [1, 2, 7, 11, 4, 5, 6] },
-        { id: 3, points: [2, 9, 10, 8, 5, 6, 4] },
-        { id: 4, points: [1, 3, 10, 7, 8, 5, 12] },
-        { id: 5, points: [9, 3, 4, 5, 8, 11, 12] }
-      ];
+      let currentMapId = "ArmsFactory";
+      try {
+        const savedMapId = localStorage.getItem(ACTIVE_MAP_KEY);
+        if (MAPS[savedMapId]) currentMapId = savedMapId;
+      } catch {}
+      let DISTRIBUTIONS = [];
       const LABELS = {
         possible: "可能刷新", question: "位置不确定", confirmed: "确认存在",
         decoding: "正在破译", nearly: "快破译完了", complete: "破译完成"
       };
       const map = document.querySelector("#map");
+      const mapImage = document.querySelector("#map-image");
+      const mapSelect = document.querySelector("#map-select");
+      const pageTitle = document.querySelector("#pageTitle");
       const message = document.querySelector("#message");
       const sizeSlider = document.querySelector("#marker-size");
       const sizeOutput = document.querySelector("#marker-size-value");
       const aliasToggle = document.querySelector("#show-aliases");
       const inferenceText = document.querySelector("#inference-text");
       const applyInferenceButton = document.querySelector("#apply-inference");
+      const undoButton = document.querySelector("#undo");
+      const redoButton = document.querySelector("#redo");
       let showAliases = false;
       let pointData = [];
       let certainPointIds = [];
-      let states = loadStates();
+      const mapStates = Object.fromEntries(Object.entries(MAPS).map(([id, config]) => [id, loadStates(config.storageKey)]));
+      let states = mapStates[currentMapId];
+      let mapLoadSequence = 0;
       let messageTimer;
+      const undoStack = [];
+      const redoStack = [];
+      const HISTORY_LIMIT = 100;
+      let lastHistorySnapshot = "";
 
-      function loadStates() {
+      function loadStates(storageKey) {
         try {
-          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+          const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
           return saved && typeof saved === "object" ? saved : {};
         } catch { return {}; }
       }
 
       function saveStates() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(states)); } catch {}
+        mapStates[currentMapId] = states;
+        try { localStorage.setItem(MAPS[currentMapId].storageKey, JSON.stringify(states)); } catch {}
+      }
+
+      // Extend this snapshot with new maps and stateful controls so they share the same undo/redo history.
+      function captureHistorySnapshot() {
+        return JSON.stringify({
+          activeMap: currentMapId,
+          maps: Object.fromEntries(Object.keys(MAPS).map(id => [id, { pointStates: { ...mapStates[id] } }])),
+          controls: { markerSize: Number(sizeSlider.value), showAliases }
+        });
+      }
+
+      function updateHistoryButtons() {
+        undoButton.disabled = undoStack.length === 0;
+        redoButton.disabled = redoStack.length === 0;
+      }
+
+      function commitHistory() {
+        const next = captureHistorySnapshot();
+        if (next === lastHistorySnapshot) return;
+        undoStack.push(lastHistorySnapshot);
+        if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+        redoStack.length = 0;
+        lastHistorySnapshot = next;
+        updateHistoryButtons();
+      }
+
+      async function restoreHistorySnapshot(snapshotText) {
+        const snapshot = JSON.parse(snapshotText);
+        for (const id of Object.keys(MAPS)) {
+          mapStates[id] = { ...(snapshot.maps?.[id]?.pointStates || {}) };
+          try { localStorage.setItem(MAPS[id].storageKey, JSON.stringify(mapStates[id])); } catch {}
+        }
+        currentMapId = MAPS[snapshot.activeMap] ? snapshot.activeMap : "ArmsFactory";
+        states = mapStates[currentMapId];
+        showAliases = Boolean(snapshot.controls?.showAliases);
+        aliasToggle.checked = showAliases;
+        try { localStorage.setItem(ALIAS_KEY, String(showAliases)); } catch {}
+        applyMarkerSize(snapshot.controls?.markerSize, true);
+        await loadMap(currentMapId);
+        lastHistorySnapshot = captureHistorySnapshot();
+      }
+
+      async function undo() {
+        if (!undoStack.length) return;
+        redoStack.push(captureHistorySnapshot());
+        await restoreHistorySnapshot(undoStack.pop());
+        updateHistoryButtons();
+        showMessage("已撤销");
+      }
+
+      async function redo() {
+        if (!redoStack.length) return;
+        undoStack.push(captureHistorySnapshot());
+        await restoreHistorySnapshot(redoStack.pop());
+        updateHistoryButtons();
+        showMessage("已重做");
       }
 
       function applyMarkerSize(value, save = true) {
@@ -150,13 +241,18 @@
 
       try { applyMarkerSize(localStorage.getItem(SIZE_KEY) || sizeSlider.value, false); }
       catch { applyMarkerSize(sizeSlider.value, false); }
-      sizeSlider.addEventListener("input", () => applyMarkerSize(sizeSlider.value));
+      sizeSlider.addEventListener("input", () => applyMarkerSize(sizeSlider.value, false));
+      sizeSlider.addEventListener("change", () => {
+        applyMarkerSize(sizeSlider.value, true);
+        commitHistory();
+      });
       try { showAliases = localStorage.getItem(ALIAS_KEY) === "true"; } catch {}
       aliasToggle.checked = showAliases;
       aliasToggle.addEventListener("change", () => {
         showAliases = aliasToggle.checked;
         try { localStorage.setItem(ALIAS_KEY, String(showAliases)); } catch {}
         map.querySelectorAll(".candidate-label").forEach(label => { label.hidden = !showAliases || !label.textContent; });
+        commitHistory();
       });
 
       function showMessage(text) {
@@ -177,6 +273,7 @@
         if (marker) updateMarker(marker, id);
         showMessage("候选点 " + id + "：" + LABELS[state]);
         renderInference();
+        commitHistory();
       }
 
       function updateMarker(marker, id) {
@@ -275,7 +372,7 @@
       }
 
       function renderPoints() {
-        map.querySelectorAll(".candidate").forEach(marker => marker.remove());
+        map.querySelectorAll(".candidate, .candidate-label").forEach(element => element.remove());
         pointData.forEach(point => {
           const marker = makeMarker(point);
           map.append(marker);
@@ -284,25 +381,83 @@
         renderInference();
       }
 
-      async function start() {
+      function setMapAspect() {
+        if (mapImage.naturalWidth && mapImage.naturalHeight) {
+          map.style.setProperty("--map-aspect", String(mapImage.naturalWidth / mapImage.naturalHeight));
+        }
+      }
+
+      async function loadMap(mapId) {
+        const config = MAPS[mapId];
+        if (!config) return;
+        const sequence = ++mapLoadSequence;
+        currentMapId = mapId;
+        states = mapStates[currentMapId];
+        mapSelect.value = mapId;
+        pageTitle.textContent = `${config.name} · 密码机记录`;
+        document.title = `${config.name}密码机地图`;
+        map.setAttribute("aria-label", `${config.name}地图`);
+        mapImage.alt = `${config.name}俯视地图`;
+        mapImage.onload = setMapAspect;
+        mapImage.src = config.image;
+        setMapAspect();
+        try { localStorage.setItem(ACTIVE_MAP_KEY, mapId); } catch {}
         try {
-          const response = await fetch(DATA_URL);
+          const response = await fetch(config.dataUrl);
           if (!response.ok) throw new Error("HTTP " + response.status);
           const data = await response.json();
           if (!Array.isArray(data.candidates)) throw new Error("Invalid candidate data");
+          if (sequence !== mapLoadSequence) return;
           pointData = data.candidates;
+          DISTRIBUTIONS = Array.isArray(data.distributions)
+            ? data.distributions.map((group, index) => ({ id: index + 1, points: group.points.map(Number) }))
+            : [];
           renderPoints();
         } catch {
+          if (sequence !== mapLoadSequence) return;
+          pointData = [];
+          DISTRIBUTIONS = [];
+          renderPoints();
           showMessage("候选点数据加载失败，请确认通过本地 HTTP 服务器访问");
         }
       }
+
+      async function start() {
+        mapSelect.value = currentMapId;
+        await loadMap(currentMapId);
+      }
+
+      mapSelect.addEventListener("change", async () => {
+        const previous = captureHistorySnapshot();
+        await loadMap(mapSelect.value);
+        const next = captureHistorySnapshot();
+        if (next !== previous) {
+          undoStack.push(previous);
+          if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+          redoStack.length = 0;
+          lastHistorySnapshot = next;
+          updateHistoryButtons();
+        }
+      });
 
       document.querySelector("#reset").addEventListener("click", () => {
         if (!confirm("重置本局所有密码机状态？")) return;
         states = {};
         saveStates();
         renderPoints();
+        commitHistory();
         showMessage("已重置为可能刷新状态");
+      });
+
+      undoButton.addEventListener("click", undo);
+      redoButton.addEventListener("click", redo);
+      document.addEventListener("keydown", event => {
+        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
+        const target = event.target;
+        if (target instanceof HTMLElement && (target.isContentEditable || target.matches("textarea, input:not([type='range']):not([type='checkbox']), select"))) return;
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
       });
 
       applyInferenceButton.addEventListener("click", () => {
@@ -317,12 +472,15 @@
         if (changed) {
           saveStates();
           renderPoints();
+          commitHistory();
           showMessage(`已将 ${changed} 个推测必有点标为白色确认`);
         } else {
           showMessage("绿色外圈的推测必有点已完成标记");
         }
       });
 
+      lastHistorySnapshot = captureHistorySnapshot();
+      updateHistoryButtons();
       start();
     })();
   </script>
