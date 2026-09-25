@@ -32,6 +32,7 @@
     .size-value { min-width: 38px; text-align: left; color: #f4f2e8; font-variant-numeric: tabular-nums; }
     .toolbar { display: flex; justify-content: center; margin-top: 7px; }
     .toolbar button { min-height: 32px; padding: 4px 10px; border: 1px solid #666b5d; border-radius: 9px; background: #282d23; color: #f4f2e8; font: inherit; font-size: 12px; }
+    .toolbar button:disabled { opacity: .45; cursor: not-allowed; }
     main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 0 8px 10px; }
     .map { position: relative; width: min(100%, calc((100svh - 185px) * 1.1806)); aspect-ratio: 1000 / 847; background: #20241e; }
     .map-image { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -51,8 +52,12 @@
     .candidate[data-state="decoding"] { background: #f0c442; color: #33250b; }
     .candidate[data-state="nearly"] { background: #4ba9ec; color: #07283e; }
     .candidate[data-state="complete"] { background: #55c873; color: #0d3217; }
+    .candidate[data-prediction="certain"] { outline: 2px solid #d8f2a1; outline-offset: 2px; }
+    .candidate[data-prediction="excluded"] { opacity: .24; filter: grayscale(1); }
     .candidate-label { position: absolute; left: var(--x); top: var(--y); z-index: 1; transform: translate(-50%, 13px); padding: 2px 5px; border-radius: 5px; background: #11130fdb; color: #fff; font-size: 10px; line-height: 1.2; white-space: nowrap; pointer-events: none; }
     .candidate-label[hidden] { display: none; }
+    .inference { max-width: 760px; margin: 8px auto 0; padding: 6px 9px; border: 1px solid #454c3b; border-radius: 8px; background: #1b2019; color: #dce5ce; font-size: 11px; line-height: 1.45; text-align: left; }
+    .inference strong { color: #e8efdb; margin-right: 5px; }
     .candidate:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
     .message { position: fixed; z-index: 2; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 24px); padding: 7px 11px; border: 1px solid #505646; border-radius: 999px; background: #22271def; color: #e9e9df; font-size: 12px; text-align: center; opacity: 0; pointer-events: none; transition: opacity .15s; }
     .message.show { opacity: 1; }
@@ -80,7 +85,8 @@
       <output class="size-value" id="marker-size-value" for="marker-size">20 px</output>
     </label>
     <label class="size-control"><input id="show-aliases" type="checkbox">显示密码机别称</label>
-    <div class="toolbar"><button id="reset" type="button">重置本局</button></div>
+    <div class="inference" id="inference" role="status" aria-live="polite"><strong>分布推测</strong><span id="inference-text">正在读取候选点…</span></div>
+    <div class="toolbar"><button id="apply-inference" type="button" disabled>一键 Apply：推测必有 → 白色</button><button id="reset" type="button">重置本局</button></div>
   </header>
   <main>
     <div class="map" id="map" aria-label="军工厂地图">
@@ -95,6 +101,14 @@
       const SIZE_KEY = "identityv-armsfactory-marker-size-v1";
       const ALIAS_KEY = "identityv-armsfactory-show-aliases-v1";
       const STATES = ["possible", "confirmed", "decoding", "nearly", "complete"];
+      const POSITIVE_STATES = new Set(["confirmed", "decoding", "nearly", "complete"]);
+      const DISTRIBUTIONS = [
+        { id: 1, points: [1, 9, 11, 8, 4, 5, 6] },
+        { id: 2, points: [1, 2, 7, 11, 4, 5, 6] },
+        { id: 3, points: [2, 9, 10, 8, 5, 6, 4] },
+        { id: 4, points: [1, 3, 10, 7, 8, 5, 12] },
+        { id: 5, points: [9, 3, 4, 5, 8, 11, 12] }
+      ];
       const LABELS = {
         possible: "可能刷新", question: "位置不确定", confirmed: "确认存在",
         decoding: "正在破译", nearly: "快破译完了", complete: "破译完成"
@@ -104,8 +118,11 @@
       const sizeSlider = document.querySelector("#marker-size");
       const sizeOutput = document.querySelector("#marker-size-value");
       const aliasToggle = document.querySelector("#show-aliases");
+      const inferenceText = document.querySelector("#inference-text");
+      const applyInferenceButton = document.querySelector("#apply-inference");
       let showAliases = false;
       let pointData = [];
+      let certainPointIds = [];
       let states = loadStates();
       let messageTimer;
 
@@ -159,6 +176,7 @@
         const marker = map.querySelector('[data-id="' + id + '"]');
         if (marker) updateMarker(marker, id);
         showMessage("候选点 " + id + "：" + LABELS[state]);
+        renderInference();
       }
 
       function updateMarker(marker, id) {
@@ -214,6 +232,48 @@
         return marker;
       }
 
+      function formatPointIds(ids) {
+        return ids.map(id => {
+          const point = pointData.find(item => Number(item.id) === id);
+          return point?.alias ? `${point.alias}（${id}）` : `点位 ${id}`;
+        }).join("、") || "无";
+      }
+
+      function renderInference() {
+        const known = pointData
+          .filter(point => POSITIVE_STATES.has(states[point.id]))
+          .map(point => Number(point.id));
+        const matching = DISTRIBUTIONS.filter(group => known.every(id => group.points.includes(id)));
+        const markers = map.querySelectorAll(".candidate");
+        markers.forEach(marker => { delete marker.dataset.prediction; });
+
+        if (!matching.length) {
+          certainPointIds = [];
+          applyInferenceButton.disabled = true;
+          inferenceText.textContent = "当前确认点与五组分布都不匹配。请检查本局记录，或补充正确分布。";
+          return;
+        }
+
+        const common = matching[0].points.filter(id => matching.every(group => group.points.includes(id)));
+        certainPointIds = common;
+        applyInferenceButton.disabled = certainPointIds.length === 0;
+        const possible = [...new Set(matching.flatMap(group => group.points))].sort((a, b) => a - b);
+        const commonSet = new Set(common);
+        const possibleSet = new Set(possible);
+        markers.forEach(marker => {
+          const id = Number(marker.dataset.id);
+          marker.dataset.prediction = commonSet.has(id) ? "certain" : possibleSet.has(id) ? "possible" : "excluded";
+        });
+
+        if (matching.length === 1) {
+          inferenceText.textContent = `唯一匹配第 ${matching[0].id} 组。整组机位：${formatPointIds(matching[0].points)}。绿色外圈为推测存在，变暗点位已排除。`;
+        } else {
+          const uncertain = possible.filter(id => !commonSet.has(id));
+          const groupNames = matching.map(group => `第${group.id}组`).join("、");
+          inferenceText.textContent = `仍符合${matching.length}组（${groupNames}）。共同必有：${formatPointIds(common)}；仍需区分：${formatPointIds(uncertain)}。点击确认已找到的点位继续缩小范围。`;
+        }
+      }
+
       function renderPoints() {
         map.querySelectorAll(".candidate").forEach(marker => marker.remove());
         pointData.forEach(point => {
@@ -221,6 +281,7 @@
           map.append(marker);
           marker.after(marker.aliasLabel);
         });
+        renderInference();
       }
 
       async function start() {
@@ -242,6 +303,24 @@
         saveStates();
         renderPoints();
         showMessage("已重置为可能刷新状态");
+      });
+
+      applyInferenceButton.addEventListener("click", () => {
+        let changed = 0;
+        certainPointIds.forEach(id => {
+          const state = currentState(id);
+          if (state === "possible" || state === "question") {
+            states[id] = "confirmed";
+            changed++;
+          }
+        });
+        if (changed) {
+          saveStates();
+          renderPoints();
+          showMessage(`已将 ${changed} 个推测必有点标为白色确认`);
+        } else {
+          showMessage("绿色外圈的推测必有点已完成标记");
+        }
       });
 
       start();
