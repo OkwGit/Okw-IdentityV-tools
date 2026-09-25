@@ -24,7 +24,7 @@
     .legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
     .swatch { width: 13px; height: 13px; display: inline-grid; place-items: center; border: 1px solid #f3f0dc; border-radius: 50%; color: #11130f; font-size: 9px; font-weight: 800; }
     .swatch.possible { background: #454943; border-color: #454943; opacity: .72; }
-    .swatch.question { background: #aa8bd7; border-color: #eee2ff; color: #211633; }
+    .swatch.absent { background: #e65f66; border-color: #ffc2c5; color: #fff; }
     .swatch.confirmed { background: #f5f5ef; border-color: #fff; }
     .swatch.decoding { background: #f0c442; border-color: #fff2b8; }
     .swatch.nearly { background: #4ba9ec; border-color: #d8f0ff; }
@@ -49,13 +49,13 @@
       box-shadow: 0 1px 4px #0009; cursor: pointer; touch-action: manipulation;
       user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
     }
-    .candidate[data-state="question"] { background: #aa8bd7; color: #211633; font-size: calc(var(--marker-size) * .62); }
+    .candidate[data-state="absent"] { background: #e65f66; color: #fff; font-size: calc(var(--marker-size) * .72); }
     .candidate[data-state="confirmed"] { background: #f5f5ef; color: #11130f; }
     .candidate[data-state="decoding"] { background: #f0c442; color: #33250b; }
     .candidate[data-state="nearly"] { background: #4ba9ec; color: #07283e; }
     .candidate[data-state="complete"] { background: #55c873; color: #0d3217; }
     .candidate[data-prediction="certain"] { outline: 2px solid #d8f2a1; outline-offset: 2px; }
-    .candidate[data-prediction="excluded"] { opacity: .24; filter: grayscale(1); }
+    .candidate[data-prediction="excluded"]:not([data-state="absent"]) { opacity: .24; filter: grayscale(1); }
     .candidate-label { position: absolute; left: var(--x); top: var(--y); z-index: 1; transform: translate(-50%, 13px); padding: 2px 5px; border-radius: 5px; background: #11130fdb; color: #fff; font-size: 10px; line-height: 1.2; white-space: nowrap; pointer-events: none; }
     .candidate-label[hidden] { display: none; }
     .inference { max-width: 760px; margin: 8px auto 0; padding: 6px 9px; border: 1px solid #454c3b; border-radius: 8px; background: #1b2019; color: #dce5ce; font-size: 11px; line-height: 1.45; text-align: left; }
@@ -72,17 +72,20 @@
 <body>
   <header>
     <h1 id="pageTitle">密码机记录</h1>
-    <p class="instructions">点击候选点切换状态；长按约半秒标记问号。状态保存在本机浏览器。</p>
+    <p class="instructions">点击候选点切换状态；长按约半秒标记确认无机。状态保存在本机浏览器。</p>
     <label class="map-select" for="map-select">当前地图
       <select id="map-select">
         <option value="ArmsFactory">军工厂</option>
         <option value="Sacred_Heart_Hospital">圣心医院</option>
         <option value="TheRedChurch">红教堂</option>
+        <option value="Lakeside_Village">湖景村</option>
+        <option value="MoonlitRiverParkMap">月亮河公园</option>
+        <option value="LeosMemory">里奥的回忆</option>
       </select>
     </label>
     <div class="legend" aria-label="状态图例">
       <span class="legend-item"><i class="swatch possible"></i>可能刷新</span>
-      <span class="legend-item"><i class="swatch question">?</i>位置不确定</span>
+      <span class="legend-item"><i class="swatch absent">×</i>确认无机（长按）</span>
       <span class="legend-item"><i class="swatch confirmed"></i>确认存在</span>
       <span class="legend-item"><i class="swatch decoding"></i>正在破译</span>
       <span class="legend-item"><i class="swatch nearly"></i>快破译完</span>
@@ -125,6 +128,21 @@
           name: "红教堂", image: "assests/maps/TheRedChurch.webp",
           dataUrl: "assests/data/TheRedChurch-cipher-candidates.json",
           storageKey: "identityv-the-red-church-match-v1"
+        },
+        Lakeside_Village: {
+          name: "湖景村", image: "assests/maps/Lakeside_Village.webp",
+          dataUrl: "assests/data/Lakeside_Village-cipher-candidates.json",
+          storageKey: "identityv-lakeside-village-match-v1"
+        },
+        MoonlitRiverParkMap: {
+          name: "月亮河公园", image: "assests/maps/MoonlitRiverParkMap.webp",
+          dataUrl: "assests/data/MoonlitRiverParkMap-cipher-candidates.json",
+          storageKey: "identityv-moonlit-river-park-match-v1"
+        },
+        LeosMemory: {
+          name: "里奥的回忆", image: "assests/maps/LeosMemory.webp",
+          dataUrl: "assests/data/LeosMemory-cipher-candidates.json",
+          storageKey: "identityv-leos-memory-match-v1"
         }
       };
       const ACTIVE_MAP_KEY = "identityv-active-map-v1";
@@ -139,7 +157,7 @@
       } catch {}
       let DISTRIBUTIONS = [];
       const LABELS = {
-        possible: "可能刷新", question: "位置不确定", confirmed: "确认存在",
+        possible: "可能刷新", absent: "确认无机", confirmed: "确认存在",
         decoding: "正在破译", nearly: "快破译完了", complete: "破译完成"
       };
       const map = document.querySelector("#map");
@@ -285,8 +303,8 @@
       function updateMarker(marker, id) {
         const state = currentState(id);
         marker.dataset.state = state;
-        marker.textContent = state === "question" ? "?" : "";
-        marker.setAttribute("aria-label", "候选点 " + id + "：" + LABELS[state] + "。点击切换状态，长按标记问号");
+        marker.textContent = state === "absent" ? "×" : "";
+        marker.setAttribute("aria-label", "候选点 " + id + "：" + LABELS[state] + "。点击切换状态，长按确认无机");
         marker.title = "候选点 " + id + "：" + LABELS[state];
       }
 
@@ -315,7 +333,7 @@
           clearTimeout(longTimer);
           longTimer = setTimeout(() => {
             longPressed = true;
-            setState(point.id, "question");
+            setState(point.id, "absent");
           }, 520);
         });
         const endPress = () => clearTimeout(longTimer);
@@ -327,9 +345,7 @@
           event.preventDefault();
           if (longPressed) { longPressed = false; return; }
           const state = currentState(point.id);
-          const next = state === "question"
-            ? "confirmed"
-            : STATES[(STATES.indexOf(state) + 1) % STATES.length];
+          const next = state === "absent" ? "possible" : STATES[(STATES.indexOf(state) + 1) % STATES.length];
           setState(point.id, next);
         });
         return marker;
@@ -346,7 +362,13 @@
         const known = pointData
           .filter(point => POSITIVE_STATES.has(states[point.id]))
           .map(point => Number(point.id));
-        const matching = DISTRIBUTIONS.filter(group => known.every(id => group.points.includes(id)));
+        const knownAbsent = pointData
+          .filter(point => states[point.id] === "absent")
+          .map(point => Number(point.id));
+        const matching = DISTRIBUTIONS.filter(group =>
+          known.every(id => group.points.includes(id)) &&
+          knownAbsent.every(id => !group.points.includes(id))
+        );
         const markers = map.querySelectorAll(".candidate");
         markers.forEach(marker => { delete marker.dataset.prediction; });
 
@@ -360,7 +382,7 @@
         if (!matching.length) {
           certainPointIds = [];
           applyInferenceButton.disabled = true;
-          inferenceText.textContent = "当前确认点与五组分布都不匹配。请检查本局记录，或补充正确分布。";
+          inferenceText.textContent = "确认有机与确认无机的记录和所有已知布局都冲突。请检查标记，或补充分布规律。";
           return;
         }
 
@@ -477,7 +499,7 @@
         let changed = 0;
         certainPointIds.forEach(id => {
           const state = currentState(id);
-          if (state === "possible" || state === "question") {
+          if (state === "possible") {
             states[id] = "confirmed";
             changed++;
           }
