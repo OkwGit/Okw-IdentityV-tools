@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171914">
+  <title>军工厂地图标定工具</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #171914;
+      color: #f4f2e8;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; }
+    header { padding: 14px 16px 10px; text-align: center; }
+    h1 { margin: 0; font-size: 18px; font-weight: 650; }
+    header p { margin: 5px 0 0; color: #b9bdad; font-size: 13px; }
+    .layout { width: min(1200px, 100%); margin: 0 auto; padding: 8px 12px 18px; }
+    .toolbar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 0 10px; }
+    button { font: inherit; }
+    .toolbar button, .point-row button {
+      min-height: 40px;
+      border: 1px solid #59604e;
+      border-radius: 9px;
+      background: #282d23;
+      color: #f4f2e8;
+      padding: 8px 13px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .toolbar button:active, .point-row button:active { background: #39412f; }
+    .toolbar .primary { background: #d99e2b; color: #211a0c; border-color: #f2c45e; font-weight: 700; }
+    .workarea { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 12px; align-items: start; }
+    .map-card, .side-card { border: 1px solid #34392d; border-radius: 12px; background: #20231c; }
+    .map-card { padding: 8px; display: grid; place-items: center; }
+    .map {
+      position: relative;
+      width: min(100%, calc((100svh - 210px) * 1.1806));
+      aspect-ratio: 1000 / 847;
+      overflow: hidden;
+      background: #151711;
+      cursor: crosshair;
+      touch-action: manipulation;
+      user-select: none;
+    }
+    .map-image { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+    .marker {
+      position: absolute;
+      left: var(--x);
+      top: var(--y);
+      z-index: 1;
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      transform: translate(-50%, -50%);
+      border: 2px solid #fff3c0;
+      border-radius: 50%;
+      background: #dfa52f;
+      color: #261d0c;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1;
+      box-shadow: 0 1px 8px #000d;
+      cursor: grab;
+      touch-action: none;
+    }
+    .marker:active { cursor: grabbing; }
+    .marker:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+    .side-card { padding: 12px; }
+    .side-card h2 { margin: 0 0 5px; font-size: 15px; }
+    .side-card p { margin: 0 0 10px; color: #b9bdad; font-size: 12px; line-height: 1.5; }
+    .point-list { display: grid; gap: 6px; max-height: 46svh; overflow: auto; }
+    .empty { padding: 12px 0; color: #a8ad9b; font-size: 13px; text-align: center; }
+    .point-row { display: grid; grid-template-columns: 28px 1fr 36px; align-items: center; gap: 7px; font-size: 12px; }
+    .point-number { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #dfa52f; color: #261d0c; font-weight: 800; }
+    .point-coord { color: #d5d8ca; font-variant-numeric: tabular-nums; }
+    .point-row button { min-height: 34px; padding: 4px; color: #ffccbd; }
+    .status { min-height: 18px; margin-top: 9px; color: #cbd9ae; font-size: 12px; }
+    .data { width: 100%; min-height: 74px; margin-top: 8px; resize: vertical; border: 1px solid #42483a; border-radius: 8px; padding: 8px; background: #151711; color: #dce2cf; font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    @media (max-width: 720px) {
+      header { padding-top: max(12px, env(safe-area-inset-top)); }
+      .layout { padding-inline: 8px; }
+      .workarea { grid-template-columns: 1fr; }
+      .map { width: min(100%, calc((100svh - 245px) * 1.1806)); }
+      .side-card { padding: 10px; }
+      .point-list { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 22svh; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>军工厂地图标定</h1>
+    <p>点击地图放置密码机标记；按住标记拖动微调。坐标会自动保存在本机浏览器。</p>
+  </header>
+  <main class="layout">
+    <nav class="toolbar" aria-label="标定操作">
+      <button class="primary" id="addMode" type="button" aria-pressed="true">添加点位：开启</button>
+      <button id="undo" type="button">撤销上一个</button>
+      <button id="clear" type="button">清空全部</button>
+      <button id="copy" type="button">复制坐标 JSON</button>
+      <button id="download" type="button">下载 JSON</button>
+    </nav>
+    <div class="workarea">
+      <section class="map-card" aria-label="地图标定画布">
+        <div class="map" id="map">
+          <img class="map-image" src="assests/maps/ArmsFactory.webp" alt="军工厂俯视地图">
+        </div>
+      </section>
+      <aside class="side-card">
+        <h2>标定点位 <span id="count">0</span></h2>
+        <p>坐标为地图宽高的比例值，范围 0–1；拖动地图上的标记可微调。</p>
+        <div class="point-list" id="pointList"><div class="empty">点击地图添加第一个点位</div></div>
+        <div class="status" id="status" aria-live="polite"></div>
+        <textarea class="data" id="data" aria-label="坐标 JSON" spellcheck="false" readonly></textarea>
+      </aside>
+    </div>
+  </main>
+  <script>
+    (() => {
+      const STORAGE_KEY = "identityv-armsfactory-calibration-v1";
+      const map = document.querySelector("#map");
+      const list = document.querySelector("#pointList");
+      const data = document.querySelector("#data");
+      const status = document.querySelector("#status");
+      const count = document.querySelector("#count");
+      const addModeButton = document.querySelector("#addMode");
+      let addMode = true;
+      let points = loadPoints();
+      let draggingId = null;
+
+      function loadPoints() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+          return Array.isArray(saved) ? saved.filter(p => Number.isFinite(p.x) && Number.isFinite(p.y)) : [];
+        } catch { return []; }
+      }
+
+      function outputObject() {
+        return {
+          map: "ArmsFactory",
+          image: "assests/maps/ArmsFactory.webp",
+          coordinateSystem: "normalized (0-1, origin at top-left)",
+          points: points.map((p, i) => ({ id: i + 1, x: +p.x.toFixed(4), y: +p.y.toFixed(4) }))
+        };
+      }
+
+      function render(message = "") {
+        map.querySelectorAll(".marker").forEach(el => el.remove());
+        points.forEach((point, index) => {
+          const marker = document.createElement("button");
+          marker.type = "button";
+          marker.className = "marker";
+          marker.textContent = String(index + 1);
+          marker.style.setProperty("--x", `${point.x * 100}%`);
+          marker.style.setProperty("--y", `${point.y * 100}%`);
+          marker.setAttribute("aria-label", `密码机标记 ${index + 1}，按住拖动`);
+          marker.dataset.pointId = point.id;
+          marker.addEventListener("pointerdown", startDrag);
+          marker.addEventListener("click", event => event.stopPropagation());
+          map.append(marker);
+        });
+
+        count.textContent = points.length;
+        list.replaceChildren();
+        if (!points.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "点击地图添加第一个点位";
+          list.append(empty);
+        } else {
+          points.forEach((point, index) => {
+            const row = document.createElement("div");
+            row.className = "point-row";
+            const number = document.createElement("span");
+            number.className = "point-number";
+            number.textContent = index + 1;
+            const coords = document.createElement("span");
+            coords.className = "point-coord";
+            coords.textContent = `x ${point.x.toFixed(4)} · y ${point.y.toFixed(4)}`;
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.textContent = "删";
+            remove.setAttribute("aria-label", `删除标记 ${index + 1}`);
+            remove.addEventListener("click", () => {
+              points = points.filter(p => p.id !== point.id);
+              render("已删除该点位");
+            });
+            row.append(number, coords, remove);
+            list.append(row);
+          });
+        }
+
+        data.value = JSON.stringify(outputObject(), null, 2);
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); } catch { /* Private browsing may disable local storage. */ }
+        if (message) status.textContent = message;
+      }
+
+      function getMapPoint(event) {
+        const rect = map.getBoundingClientRect();
+        return {
+          x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+          y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+        };
+      }
+
+      function startDrag(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        draggingId = event.currentTarget.dataset.pointId;
+        map.setPointerCapture(event.pointerId);
+        movePoint(event);
+      }
+
+      function movePoint(event) {
+        if (!draggingId) return;
+        const position = getMapPoint(event);
+        const point = points.find(p => p.id === draggingId);
+        if (point) {
+          point.x = position.x;
+          point.y = position.y;
+          render();
+        }
+      }
+
+      map.addEventListener("pointerdown", event => {
+        if (!addMode || event.target.closest(".marker")) return;
+        const position = getMapPoint(event);
+        points.push({ id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`, ...position });
+        render("已添加点位；可拖动标记微调");
+      });
+
+      map.addEventListener("pointermove", movePoint);
+      map.addEventListener("pointerup", () => { draggingId = null; });
+      map.addEventListener("pointercancel", () => { draggingId = null; });
+
+      addModeButton.addEventListener("click", () => {
+        addMode = !addMode;
+        addModeButton.textContent = addMode ? "添加点位：开启" : "添加点位：关闭";
+        addModeButton.setAttribute("aria-pressed", String(addMode));
+        map.style.cursor = addMode ? "crosshair" : "default";
+        status.textContent = addMode ? "点击地图添加点位" : "添加已暂停，可拖动或删除现有点位";
+      });
+
+      document.querySelector("#undo").addEventListener("click", () => {
+        points.pop();
+        render("已撤销上一个点位");
+      });
+
+      document.querySelector("#clear").addEventListener("click", () => {
+        if (!points.length || !confirm("清空所有已标定点位？")) return;
+        points = [];
+        render("已清空全部点位");
+      });
+
+      document.querySelector("#copy").addEventListener("click", async () => {
+        const text = JSON.stringify(outputObject(), null, 2);
+        try {
+          await navigator.clipboard.writeText(text);
+          status.textContent = "坐标 JSON 已复制";
+        } catch {
+          data.focus();
+          data.select();
+          status.textContent = "浏览器不允许自动复制；JSON 已选中，请按 Ctrl+C 复制";
+        }
+      });
+
+      document.querySelector("#download").addEventListener("click", () => {
+        const blob = new Blob([JSON.stringify(outputObject(), null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "ArmsFactory-points.json";
+        link.click();
+        URL.revokeObjectURL(url);
+        status.textContent = "坐标 JSON 已下载";
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>
