@@ -1,0 +1,8 @@
+{
+  "map": "EversleepingTownMap",
+  "image": "assests/maps/EversleepingTownMap.webp",
+  "coordinateSystem": "normalized (0-1, origin at top-left)",
+  "candidates": [],
+  "distributionRulesText": "",
+  "distributions": []
+}

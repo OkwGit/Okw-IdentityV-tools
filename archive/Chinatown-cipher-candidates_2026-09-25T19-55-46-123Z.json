@@ -1,0 +1,8 @@
+{
+  "map": "Chinatown",
+  "image": "assests/maps/Chinatown.webp",
+  "coordinateSystem": "normalized (0-1, origin at top-left)",
+  "candidates": [],
+  "distributionRulesText": "",
+  "distributions": []
+}

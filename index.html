@@ -60,6 +60,8 @@
     .candidate-label[hidden] { display: none; }
     .inference { max-width: 760px; margin: 8px auto 0; padding: 6px 9px; border: 1px solid #454c3b; border-radius: 8px; background: #1b2019; color: #dce5ce; font-size: 11px; line-height: 1.45; text-align: left; }
     .inference strong { color: #e8efdb; margin-right: 5px; }
+    .inference-count { margin-top: 5px; color: #f1e8bd; font-size: 12px; font-weight: 650; }
+    .inference-count output { color: #fff; font-size: 14px; font-variant-numeric: tabular-nums; }
     .candidate:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
     .message { position: fixed; z-index: 2; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 24px); padding: 7px 11px; border: 1px solid #505646; border-radius: 999px; background: #22271def; color: #e9e9df; font-size: 12px; text-align: center; opacity: 0; pointer-events: none; transition: opacity .15s; }
     .message.show { opacity: 1; }
@@ -81,6 +83,9 @@
         <option value="Lakeside_Village">湖景村</option>
         <option value="MoonlitRiverParkMap">月亮河公园</option>
         <option value="LeosMemory">里奥的回忆</option>
+        <option value="Darkwoods">不归林</option>
+        <option value="Chinatown">唐人街</option>
+        <option value="EversleepingTownMap">永眠镇</option>
       </select>
     </label>
     <div class="legend" aria-label="状态图例">
@@ -97,7 +102,7 @@
       <output class="size-value" id="marker-size-value" for="marker-size">20 px</output>
     </label>
     <label class="size-control"><input id="show-aliases" type="checkbox">显示密码机别称</label>
-    <div class="inference" id="inference" role="status" aria-live="polite"><strong>分布推测</strong><span id="inference-text">正在读取候选点…</span></div>
+    <div class="inference" id="inference" role="status" aria-live="polite"><strong>分布推测</strong><span id="inference-text">正在读取候选点…</span><div class="inference-count">还有 <output id="unresolved-count">—</output> 台机子的位置无法推测</div></div>
     <div class="toolbar">
       <button id="undo" type="button" title="Ctrl+Z" disabled>撤销</button>
       <button id="redo" type="button" title="Ctrl+Shift+Z" disabled>重做</button>
@@ -143,6 +148,21 @@
           name: "里奥的回忆", image: "assests/maps/LeosMemory.webp",
           dataUrl: "assests/data/LeosMemory-cipher-candidates.json",
           storageKey: "identityv-leos-memory-match-v1"
+        },
+        Darkwoods: {
+          name: "不归林", image: "assests/maps/Darkwoods.webp",
+          dataUrl: "assests/data/Darkwoods-cipher-candidates.json",
+          storageKey: "identityv-darkwoods-match-v1"
+        },
+        Chinatown: {
+          name: "唐人街", image: "assests/maps/Chinatown.webp",
+          dataUrl: "assests/data/Chinatown-cipher-candidates.json",
+          storageKey: "identityv-chinatown-match-v1"
+        },
+        EversleepingTownMap: {
+          name: "永眠镇", image: "assests/maps/EversleepingTownMap.webp",
+          dataUrl: "assests/data/EversleepingTownMap-cipher-candidates.json",
+          storageKey: "identityv-eversleeping-town-match-v1"
         }
       };
       const ACTIVE_MAP_KEY = "identityv-active-map-v1";
@@ -169,6 +189,7 @@
       const sizeOutput = document.querySelector("#marker-size-value");
       const aliasToggle = document.querySelector("#show-aliases");
       const inferenceText = document.querySelector("#inference-text");
+      const unresolvedCount = document.querySelector("#unresolved-count");
       const applyInferenceButton = document.querySelector("#apply-inference");
       const undoButton = document.querySelector("#undo");
       const redoButton = document.querySelector("#redo");
@@ -375,6 +396,8 @@
         if (!DISTRIBUTIONS.length) {
           certainPointIds = [];
           applyInferenceButton.disabled = true;
+          unresolvedCount.value = "—";
+          unresolvedCount.textContent = "—";
           inferenceText.textContent = "此地图的候选点和刷新组合尚未标定。请先在 calibrate 页面完成标定。";
           return;
         }
@@ -382,11 +405,17 @@
         if (!matching.length) {
           certainPointIds = [];
           applyInferenceButton.disabled = true;
+          unresolvedCount.value = "—";
+          unresolvedCount.textContent = "—";
           inferenceText.textContent = "确认有机与确认无机的记录和所有已知布局都冲突。请检查标记，或补充分布规律。";
           return;
         }
 
         const common = matching[0].points.filter(id => matching.every(group => group.points.includes(id)));
+        const totalMachines = matching[0].points.length;
+        const stillUnknown = Math.max(0, totalMachines - common.length);
+        unresolvedCount.value = String(stillUnknown);
+        unresolvedCount.textContent = String(stillUnknown);
         certainPointIds = common;
         applyInferenceButton.disabled = certainPointIds.length === 0;
         const possible = [...new Set(matching.flatMap(group => group.points))].sort((a, b) => a - b);

@@ -121,6 +121,9 @@
         <option value="Lakeside_Village">湖景村</option>
         <option value="MoonlitRiverParkMap">月亮河公园</option>
         <option value="LeosMemory">里奥的回忆</option>
+        <option value="Darkwoods">不归林</option>
+        <option value="Chinatown">唐人街</option>
+        <option value="EversleepingTownMap">永眠镇</option>
       </select>
     </label>
   </header>
@@ -131,6 +134,8 @@
       <button id="clear" type="button">清空全部</button>
       <button id="copy" type="button">复制坐标 JSON</button>
       <button id="download" type="button">下载 JSON</button>
+      <button id="saveProject" type="button">一键保存到项目</button>
+      <button id="changeProjectFolder" type="button">更换保存文件夹</button>
       <button id="chooseFile" type="button">导入 JSON 文件</button>
       <button id="importText" type="button">导入下方 JSON</button>
       <input class="file-input" id="fileInput" type="file" accept=".json,application/json">
@@ -144,10 +149,11 @@
       <aside class="side-card">
         <h2>标定点位 <span id="count">0</span></h2>
         <p>坐标为地图宽高的比例值，范围 0–1；拖动地图上的标记可微调。可粘贴 JSON 后点“导入下方 JSON”，也可导入 JSON 文件。</p>
+        <p>首次点击“一键保存到项目”时选择项目根目录；覆盖旧 JSON 前，会先将旧版归档到 assests/data/archive 文件夹。</p>
         <div class="point-list" id="pointList"><div class="empty">点击地图添加第一个点位</div></div>
         <div class="status" id="status" aria-live="polite"></div>
         <h2>位置规律</h2>
-        <p>严格格式：每组 7 个点位编号，用英文逗号分隔，并以英文分号结束；每组一行。编号对应上方列表。</p>
+      <p>严格格式：每组 7 个点位编号，用英文逗号分隔，并以英文分号结束；每组一行。编号对应上方列表。</p>
         <textarea class="data rules" id="rules" aria-label="地图刷新位置规律" spellcheck="false" placeholder="1,2,3,4,5,6,7;&#10;1,2,3,4,5,6,8;"></textarea>
         <div class="rule-validation" id="ruleValidation" role="status" aria-live="polite"></div>
         <div class="preview-controls" aria-label="机子组合预览">
@@ -197,6 +203,24 @@
           dataFile: "assests/data/LeosMemory-cipher-candidates.json",
           downloadName: "LeosMemory-cipher-candidates.json",
           storageKey: "identityv-leos-memory-calibration-v1"
+        },
+        Darkwoods: {
+          id: "Darkwoods", name: "不归林", image: "assests/maps/Darkwoods.webp",
+          dataFile: "assests/data/Darkwoods-cipher-candidates.json",
+          downloadName: "Darkwoods-cipher-candidates.json",
+          storageKey: "identityv-darkwoods-calibration-v1"
+        },
+        Chinatown: {
+          id: "Chinatown", name: "唐人街", image: "assests/maps/Chinatown.webp",
+          dataFile: "assests/data/Chinatown-cipher-candidates.json",
+          downloadName: "Chinatown-cipher-candidates.json",
+          storageKey: "identityv-chinatown-calibration-v1"
+        },
+        EversleepingTownMap: {
+          id: "EversleepingTownMap", name: "永眠镇", image: "assests/maps/EversleepingTownMap.webp",
+          dataFile: "assests/data/EversleepingTownMap-cipher-candidates.json",
+          downloadName: "EversleepingTownMap-cipher-candidates.json",
+          storageKey: "identityv-eversleeping-town-calibration-v1"
         }
       };
       const ACTIVE_MAP_KEY = "identityv-calibration-active-map-v1";
@@ -212,6 +236,7 @@
       const previewToggle = document.querySelector("#previewToggle");
       const copyButton = document.querySelector("#copy");
       const downloadButton = document.querySelector("#download");
+      const saveProjectButton = document.querySelector("#saveProject");
       const status = document.querySelector("#status");
       const count = document.querySelector("#count");
       const addModeButton = document.querySelector("#addMode");
@@ -227,6 +252,58 @@
       let previewingGroup = null;
       let draggingId = null;
       let loadSequence = 0;
+      let projectDirectoryHandle = null;
+      saveProjectButton.disabled = true;
+
+      function openHandleDatabase() {
+        return new Promise((resolve, reject) => {
+          const request = indexedDB.open("identityv-calibration-settings", 1);
+          request.onupgradeneeded = () => request.result.createObjectStore("handles");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      }
+
+      async function getSavedProjectDirectory() {
+        const db = await openHandleDatabase();
+        return new Promise((resolve, reject) => {
+          const request = db.transaction("handles", "readonly").objectStore("handles").get("project-root");
+          request.onsuccess = () => { db.close(); resolve(request.result || null); };
+          request.onerror = () => { db.close(); reject(request.error); };
+        });
+      }
+
+      async function rememberProjectDirectory(handle) {
+        const db = await openHandleDatabase();
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction("handles", "readwrite");
+          transaction.objectStore("handles").put(handle, "project-root");
+          transaction.oncomplete = () => { db.close(); resolve(); };
+          transaction.onerror = () => { db.close(); reject(transaction.error); };
+        });
+      }
+
+      async function forgetProjectDirectory() {
+        const db = await openHandleDatabase();
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction("handles", "readwrite");
+          transaction.objectStore("handles").delete("project-root");
+          transaction.oncomplete = () => { db.close(); resolve(); };
+          transaction.onerror = () => { db.close(); reject(transaction.error); };
+        });
+      }
+
+      async function validateProjectDirectory(root) {
+        try {
+          await root.getFileHandle("calibrate.html");
+          const assetsDirectory = await root.getDirectoryHandle("assests");
+          await assetsDirectory.getDirectoryHandle("data");
+        } catch {
+          throw new Error("这不是项目根目录；请选择包含 calibrate.html 和 assests 文件夹的 Okw-IdentityV-tools 文件夹");
+        }
+      }
+
+      getSavedProjectDirectory().then(handle => { projectDirectoryHandle = handle; }).catch(() => {});
 
       function normalizePoints(records) {
         if (!Array.isArray(records)) return [];
@@ -287,6 +364,7 @@
           : (rules.value.trim() ? `格式正确：${validation.groups.length} 组` : "尚未填写分布组（可留空）");
         copyButton.disabled = !validation.valid;
         downloadButton.disabled = !validation.valid;
+        saveProjectButton.disabled = !validation.valid;
         const selected = previewGroup.value;
         previewGroup.replaceChildren();
         if (validation.valid && validation.groups.length) {
@@ -587,6 +665,10 @@
       });
 
       document.querySelector("#download").addEventListener("click", () => {
+        downloadCurrentJson();
+      });
+
+      function downloadCurrentJson() {
         const blob = new Blob([JSON.stringify(outputObject(), null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -595,6 +677,80 @@
         link.click();
         URL.revokeObjectURL(url);
         status.textContent = "坐标 JSON 已下载";
+      }
+
+      async function writeFile(fileHandle, contents) {
+        const writable = await fileHandle.createWritable();
+        await writable.write(contents);
+        await writable.close();
+      }
+
+      document.querySelector("#changeProjectFolder").addEventListener("click", async () => {
+        if (!window.showDirectoryPicker) {
+          status.textContent = "当前浏览器不支持选择项目文件夹；请使用下载 JSON 保存";
+          return;
+        }
+        try {
+          const root = await window.showDirectoryPicker({ id: "identityv-project-root", mode: "readwrite" });
+          await validateProjectDirectory(root);
+          projectDirectoryHandle = root;
+          await rememberProjectDirectory(root).catch(() => {});
+          status.textContent = "保存位置已更新为项目根目录";
+        } catch (error) {
+          status.textContent = error.name === "AbortError" ? "已取消更换文件夹" : `更换失败：${error.message}`;
+        }
+      });
+
+      saveProjectButton.addEventListener("click", async () => {
+        if (!validateDistributionRules(rules.value).valid) return;
+        if (!window.showDirectoryPicker) {
+          downloadCurrentJson();
+          status.textContent = "浏览器不支持直接写入项目文件夹；JSON 已下载，请手动放入项目";
+          return;
+        }
+        try {
+          let root = projectDirectoryHandle;
+          if (!root) {
+            root = await window.showDirectoryPicker({ id: "identityv-project-root", mode: "readwrite" });
+          } else {
+            const permission = await root.queryPermission({ mode: "readwrite" });
+            if (permission !== "granted" && await root.requestPermission({ mode: "readwrite" }) !== "granted") {
+              throw new Error("没有获得项目文件夹写入权限");
+            }
+          }
+
+          try { await validateProjectDirectory(root); }
+          catch (error) {
+            projectDirectoryHandle = null;
+            forgetProjectDirectory().catch(() => {});
+            throw error;
+          }
+          projectDirectoryHandle = root;
+          rememberProjectDirectory(root).catch(() => {});
+          const assetsDirectory = await root.getDirectoryHandle("assests");
+          const dataDirectory = await assetsDirectory.getDirectoryHandle("data");
+          const archiveDirectory = await dataDirectory.getDirectoryHandle("archive", { create: true });
+          const fileName = MAPS[currentMapId].downloadName;
+          let archivedName = "";
+          try {
+            const oldHandle = await dataDirectory.getFileHandle(fileName);
+            const oldContents = await (await oldHandle.getFile()).text();
+            const timestamp = new Date().toISOString().replace(/[:.]/gu, "-");
+            archivedName = fileName.replace(/\.json$/iu, `_${timestamp}.json`);
+            const archiveHandle = await archiveDirectory.getFileHandle(archivedName, { create: true });
+            await writeFile(archiveHandle, oldContents);
+          } catch (error) {
+            if (error.name !== "NotFoundError") throw error;
+          }
+
+          const destination = await dataDirectory.getFileHandle(fileName, { create: true });
+          await writeFile(destination, JSON.stringify(outputObject(), null, 2));
+          status.textContent = archivedName
+            ? `已保存 ${fileName}；旧版已归档至 assests/data/archive/${archivedName}`
+            : `已保存 ${fileName}（首次保存，无旧版需要归档）`;
+        } catch (error) {
+          status.textContent = error.name === "AbortError" ? "已取消保存" : `保存失败：${error.message}`;
+        }
       });
 
       loadMap(currentMapId, `已载入${MAPS[currentMapId].name}数据`);

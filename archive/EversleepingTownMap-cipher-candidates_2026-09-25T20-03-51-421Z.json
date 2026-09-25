@@ -1,0 +1,94 @@
+{
+  "map": "EversleepingTownMap",
+  "image": "assests/maps/EversleepingTownMap.webp",
+  "coordinateSystem": "normalized (0-1, origin at top-left)",
+  "candidates": [
+    {
+      "id": 1,
+      "x": 0.8101,
+      "y": 0.2611,
+      "alias": ""
+    },
+    {
+      "id": 2,
+      "x": 0.7119,
+      "y": 0.3809,
+      "alias": ""
+    },
+    {
+      "id": 3,
+      "x": 0.586,
+      "y": 0.5222,
+      "alias": ""
+    },
+    {
+      "id": 4,
+      "x": 0.6426,
+      "y": 0.5828,
+      "alias": ""
+    },
+    {
+      "id": 5,
+      "x": 0.5641,
+      "y": 0.1198,
+      "alias": ""
+    },
+    {
+      "id": 6,
+      "x": 0.4879,
+      "y": 0.2732,
+      "alias": ""
+    },
+    {
+      "id": 7,
+      "x": 0.1934,
+      "y": 0.1292,
+      "alias": ""
+    },
+    {
+      "id": 8,
+      "x": 0.1749,
+      "y": 0.3096,
+      "alias": ""
+    },
+    {
+      "id": 9,
+      "x": 0.2604,
+      "y": 0.7874,
+      "alias": ""
+    },
+    {
+      "id": 10,
+      "x": 0.2107,
+      "y": 0.6635,
+      "alias": ""
+    },
+    {
+      "id": 11,
+      "x": 0.5468,
+      "y": 0.8735,
+      "alias": ""
+    },
+    {
+      "id": 12,
+      "x": 0.4059,
+      "y": 0.4886,
+      "alias": ""
+    }
+  ],
+  "distributionRulesText": "7,10,12,3,5,11,1;\n",
+  "distributions": [
+    {
+      "name": "第1组",
+      "points": [
+        7,
+        10,
+        12,
+        3,
+        5,
+        11,
+        1
+      ]
+    }
+  ]
+}
