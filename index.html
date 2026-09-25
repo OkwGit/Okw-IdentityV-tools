@@ -1,8 +1,251 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#11130f"><title>军工厂密码机地图</title>
-<style>
-:root{color-scheme:dark;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#11130f;color:#f4f2e8}*{box-sizing:border-box}body{min-height:100svh;margin:0;display:flex;flex-direction:column}header{flex:none;padding:12px 12px 8px;text-align:center}h1{margin:0;font-size:17px;font-weight:650}.instructions{margin:4px 0 9px;color:#bdc1b2;font-size:12px}.legend{display:flex;justify-content:center;flex-wrap:wrap;gap:5px 12px;color:#e6e6dc;font-size:11px}.legend-item{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.swatch{width:13px;height:13px;display:inline-grid;place-items:center;border:1px solid #f3f0dc;border-radius:50%;color:#11130f;font-size:9px;font-weight:800}.swatch.possible{background:#858a80;border-color:#bcc1b6}.swatch.question{background:#aa8bd7;border-color:#eee2ff;color:#211633}.swatch.confirmed{background:#f5f5ef;border-color:#fff}.swatch.decoding{background:#f0c442;border-color:#fff2b8}.swatch.nearly{background:#4ba9ec;border-color:#d8f0ff}.swatch.complete{background:#55c873;border-color:#ddffe4}.toolbar{display:flex;justify-content:center;margin-top:8px}.toolbar button{min-height:34px;padding:5px 10px;border:1px solid #666b5d;border-radius:9px;background:#282d23;color:#f4f2e8;font:inherit;font-size:12px}main{flex:1;min-height:0;display:grid;place-items:center;padding:0 8px 10px}.map{position:relative;width:min(100%,calc((100svh - 140px)*1.1806));aspect-ratio:1000/847;background:#20241e}.map-image{display:block;width:100%;height:100%;object-fit:contain}.candidate{position:absolute;left:var(--x);top:var(--y);width:clamp(27px,7vw,36px);aspect-ratio:1;display:grid;place-items:center;padding:0;transform:translate(-50%,-50%);border:2px solid #d3d7cd;border-radius:50%;background:#858a80;color:#12140f;font:800 12px/1 system-ui,-apple-system,"Segoe UI",sans-serif;box-shadow:0 1px 7px #000d;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}.candidate[data-state="question"]{background:#aa8bd7;border-color:#eee2ff;color:#211633;font-size:17px}.candidate[data-state="confirmed"]{background:#f5f5ef;border-color:#fff;color:#11130f}.candidate[data-state="decoding"]{background:#f0c442;border-color:#fff2b8;color:#33250b}.candidate[data-state="nearly"]{background:#4ba9ec;border-color:#d8f0ff;color:#07283e}.candidate[data-state="complete"]{background:#55c873;border-color:#ddffe4;color:#0d3217}.candidate:focus-visible{outline:3px solid #fff;outline-offset:2px}.message{position:fixed;z-index:2;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translateX(-50%);max-width:calc(100vw - 24px);padding:7px 11px;border:1px solid #505646;border-radius:999px;background:#22271def;color:#e9e9df;font-size:12px;text-align:center;opacity:0;pointer-events:none;transition:opacity .15s}.message.show{opacity:1}@media(min-width:700px){header{padding-top:16px}.map{width:min(92vw,calc((100svh - 150px)*1.1806))}.candidate{width:38px;font-size:13px}}
-</style></head><body><header><h1>军工厂 · 密码机记录</h1><p class="instructions">点击候选点切换状态；长按约半秒标记问号。当前状态保存在本机浏览器。</p><div class="legend" aria-label="状态图例"><span class="legend-item"><i class="swatch possible"></i>可能刷新</span><span class="legend-item"><i class="swatch question">?</i>位置不确定</span><span class="legend-item"><i class="swatch confirmed"></i>确认存在</span><span class="legend-item"><i class="swatch decoding"></i>正在破译</span><span class="legend-item"><i class="swatch nearly"></i>快破译完</span><span class="legend-item"><i class="swatch complete"></i>破译完成</span></div><div class="toolbar"><button id="reset" type="button">重置本局</button></div></header><main><div class="map" id="map" aria-label="军工厂地图"><img class="map-image" src="assests/maps/ArmsFactory.webp" alt="军工厂俯视地图"></div></main><div class="message" id="message" role="status" aria-live="polite"></div>
-<script>
-(()=>{const DATA_URL="assests/data/ArmsFactory-cipher-candidates.json",STORAGE_KEY="identityv-armsfactory-match-v1",STATES=["possible","confirmed","decoding","nearly","complete"],LABELS={possible:"可能刷新",question:"位置不确定",confirmed:"确认存在",decoding:"正在破译",nearly:"快破译完了",complete:"破译完成"},map=document.querySelector("#map"),message=document.querySelector("#message");let pointData=[],states=loadStates(),messageTimer;function loadStates(){try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}");return saved&&typeof saved==="object"?saved:{}}catch{return{}}}function saveStates(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(states))}catch{}}function showMessage(text){message.textContent=text;message.classList.add("show");clearTimeout(messageTimer);messageTimer=setTimeout(()=>message.classList.remove("show"),1300)}function currentState(id){return LABELS[states[id]]?states[id]:"possible"}function setState(id,state){states[id]=state;saveStates();const marker=map.querySelector('[data-id="'+id+'"]');if(marker)updateMarker(marker,id);showMessage("候选点 "+id+"："+LABELS[state])}function updateMarker(marker,id){const state=currentState(id);marker.dataset.state=state;marker.textContent=state==="question"?"?":id;marker.setAttribute("aria-label","候选点 "+id+"："+LABELS[state]+"。点击切换状态，长按标记问号");marker.title="候选点 "+id+"："+LABELS[state]}function makeMarker(point){const marker=document.createElement("button");marker.type="button";marker.className="candidate";marker.dataset.id=point.id;marker.style.setProperty("--x",(point.x*100)+"%");marker.style.setProperty("--y",(point.y*100)+"%");updateMarker(marker,point.id);let longTimer=null,longPressed=false;marker.addEventListener("pointerdown",event=>{if(event.pointerType==="mouse"&&event.button!==0)return;longPressed=false;clearTimeout(longTimer);longTimer=setTimeout(()=>{longPressed=true;setState(point.id,"question")},520)});const endPress=()=>clearTimeout(longTimer);marker.addEventListener("pointerup",endPress);marker.addEventListener("pointercancel",endPress);marker.addEventListener("pointerleave",endPress);marker.addEventListener("contextmenu",event=>event.preventDefault());marker.addEventListener("click",event=>{event.preventDefault();if(longPressed){longPressed=false;return}const state=currentState(point.id),next=state==="question"?"confirmed":STATES[(STATES.indexOf(state)+1)%STATES.length];setState(point.id,next)});return marker}function renderPoints(){map.querySelectorAll(".candidate").forEach(marker=>marker.remove());pointData.forEach(point=>map.append(makeMarker(point)))}function start(){pointData=[{id:1,x:0.3234,y:0.1211},{id:2,x:0.3354,y:0.2958},{id:3,x:0.2316,y:0.369},{id:4,x:0.1385,y:0.769},{id:5,x:0.3831,y:0.8296},{id:6,x:0.6658,y:0.8733},{id:7,x:0.6038,y:0.4521},{id:8,x:0.5203,y:0.5845},{id:9,x:0.5942,y:0.1352},{id:10,x:0.7637,y:0.2789},{id:11,x:0.7959,y:0.4113},{id:12,x:0.7088,y:0.8155}];renderPoints()}document.querySelector("#reset").addEventListener("click",()=>{if(!confirm("重置本局所有密码机状态？"))return;states={};saveStates();renderPoints();showMessage("已重置为 12 个可能刷新点")});start()})();
-</script></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#11130f">
+  <title>军工厂密码机地图</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #11130f;
+      color: #f4f2e8;
+      --marker-size: 20px;
+    }
+    * { box-sizing: border-box; }
+    body { min-height: 100svh; margin: 0; display: flex; flex-direction: column; }
+    header { flex: none; padding: 12px 12px 8px; text-align: center; }
+    h1 { margin: 0; font-size: 17px; font-weight: 650; }
+    .instructions { margin: 4px 0 9px; color: #bdc1b2; font-size: 12px; }
+    .legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 5px 12px; color: #e6e6dc; font-size: 11px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .swatch { width: 13px; height: 13px; display: inline-grid; place-items: center; border: 1px solid #f3f0dc; border-radius: 50%; color: #11130f; font-size: 9px; font-weight: 800; }
+    .swatch.possible { background: #454943; border-color: #454943; opacity: .72; }
+    .swatch.question { background: #aa8bd7; border-color: #eee2ff; color: #211633; }
+    .swatch.confirmed { background: #f5f5ef; border-color: #fff; }
+    .swatch.decoding { background: #f0c442; border-color: #fff2b8; }
+    .swatch.nearly { background: #4ba9ec; border-color: #d8f0ff; }
+    .swatch.complete { background: #55c873; border-color: #ddffe4; }
+    .size-control { display: flex; align-items: center; justify-content: center; gap: 9px; margin: 10px auto 0; color: #d4d7cb; font-size: 12px; }
+    .size-control input { width: min(45vw, 190px); accent-color: #aeb89d; }
+    .size-value { min-width: 38px; text-align: left; color: #f4f2e8; font-variant-numeric: tabular-nums; }
+    .toolbar { display: flex; justify-content: center; margin-top: 7px; }
+    .toolbar button { min-height: 32px; padding: 4px 10px; border: 1px solid #666b5d; border-radius: 9px; background: #282d23; color: #f4f2e8; font: inherit; font-size: 12px; }
+    main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 0 8px 10px; }
+    .map { position: relative; width: min(100%, calc((100svh - 185px) * 1.1806)); aspect-ratio: 1000 / 847; background: #20241e; }
+    .map-image { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .candidate {
+      position: absolute; left: var(--x); top: var(--y);
+      width: var(--marker-size); aspect-ratio: 1;
+      display: grid; place-items: center; padding: 0;
+      transform: translate(-50%, -50%);
+      border: 0; border-radius: 50%;
+      background: rgba(48, 52, 48, .68); color: #dedfd7;
+      font: 800 calc(var(--marker-size) * .42)/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+      box-shadow: 0 1px 4px #0009; cursor: pointer; touch-action: manipulation;
+      user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+    }
+    .candidate[data-state="question"] { background: #aa8bd7; color: #211633; font-size: calc(var(--marker-size) * .62); }
+    .candidate[data-state="confirmed"] { background: #f5f5ef; color: #11130f; }
+    .candidate[data-state="decoding"] { background: #f0c442; color: #33250b; }
+    .candidate[data-state="nearly"] { background: #4ba9ec; color: #07283e; }
+    .candidate[data-state="complete"] { background: #55c873; color: #0d3217; }
+    .candidate-label { position: absolute; left: var(--x); top: var(--y); z-index: 1; transform: translate(-50%, 13px); padding: 2px 5px; border-radius: 5px; background: #11130fdb; color: #fff; font-size: 10px; line-height: 1.2; white-space: nowrap; pointer-events: none; }
+    .candidate-label[hidden] { display: none; }
+    .candidate:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    .message { position: fixed; z-index: 2; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 24px); padding: 7px 11px; border: 1px solid #505646; border-radius: 999px; background: #22271def; color: #e9e9df; font-size: 12px; text-align: center; opacity: 0; pointer-events: none; transition: opacity .15s; }
+    .message.show { opacity: 1; }
+    @media (min-width: 700px) {
+      header { padding-top: 16px; }
+      .map { width: min(92vw, calc((100svh - 195px) * 1.1806)); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>军工厂 · 密码机记录</h1>
+    <p class="instructions">点击候选点切换状态；长按约半秒标记问号。状态保存在本机浏览器。</p>
+    <div class="legend" aria-label="状态图例">
+      <span class="legend-item"><i class="swatch possible"></i>可能刷新</span>
+      <span class="legend-item"><i class="swatch question">?</i>位置不确定</span>
+      <span class="legend-item"><i class="swatch confirmed"></i>确认存在</span>
+      <span class="legend-item"><i class="swatch decoding"></i>正在破译</span>
+      <span class="legend-item"><i class="swatch nearly"></i>快破译完</span>
+      <span class="legend-item"><i class="swatch complete"></i>破译完成</span>
+    </div>
+    <label class="size-control" for="marker-size">
+      <span>图标大小</span>
+      <input id="marker-size" type="range" min="12" max="34" step="1" value="20">
+      <output class="size-value" id="marker-size-value" for="marker-size">20 px</output>
+    </label>
+    <label class="size-control"><input id="show-aliases" type="checkbox">显示密码机别称</label>
+    <div class="toolbar"><button id="reset" type="button">重置本局</button></div>
+  </header>
+  <main>
+    <div class="map" id="map" aria-label="军工厂地图">
+      <img class="map-image" src="assests/maps/ArmsFactory.webp" alt="军工厂俯视地图">
+    </div>
+  </main>
+  <div class="message" id="message" role="status" aria-live="polite"></div>
+  <script>
+    (() => {
+      const DATA_URL = "assests/data/ArmsFactory-cipher-candidates.json";
+      const STORAGE_KEY = "identityv-armsfactory-match-v1";
+      const SIZE_KEY = "identityv-armsfactory-marker-size-v1";
+      const ALIAS_KEY = "identityv-armsfactory-show-aliases-v1";
+      const STATES = ["possible", "confirmed", "decoding", "nearly", "complete"];
+      const LABELS = {
+        possible: "可能刷新", question: "位置不确定", confirmed: "确认存在",
+        decoding: "正在破译", nearly: "快破译完了", complete: "破译完成"
+      };
+      const map = document.querySelector("#map");
+      const message = document.querySelector("#message");
+      const sizeSlider = document.querySelector("#marker-size");
+      const sizeOutput = document.querySelector("#marker-size-value");
+      const aliasToggle = document.querySelector("#show-aliases");
+      let showAliases = false;
+      let pointData = [];
+      let states = loadStates();
+      let messageTimer;
+
+      function loadStates() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+          return saved && typeof saved === "object" ? saved : {};
+        } catch { return {}; }
+      }
+
+      function saveStates() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(states)); } catch {}
+      }
+
+      function applyMarkerSize(value, save = true) {
+        const size = Math.max(12, Math.min(34, Number(value) || 20));
+        document.documentElement.style.setProperty("--marker-size", size + "px");
+        sizeSlider.value = String(size);
+        sizeOutput.value = size + " px";
+        sizeOutput.textContent = size + " px";
+        if (save) {
+          try { localStorage.setItem(SIZE_KEY, String(size)); } catch {}
+        }
+      }
+
+      try { applyMarkerSize(localStorage.getItem(SIZE_KEY) || sizeSlider.value, false); }
+      catch { applyMarkerSize(sizeSlider.value, false); }
+      sizeSlider.addEventListener("input", () => applyMarkerSize(sizeSlider.value));
+      try { showAliases = localStorage.getItem(ALIAS_KEY) === "true"; } catch {}
+      aliasToggle.checked = showAliases;
+      aliasToggle.addEventListener("change", () => {
+        showAliases = aliasToggle.checked;
+        try { localStorage.setItem(ALIAS_KEY, String(showAliases)); } catch {}
+        map.querySelectorAll(".candidate-label").forEach(label => { label.hidden = !showAliases || !label.textContent; });
+      });
+
+      function showMessage(text) {
+        message.textContent = text;
+        message.classList.add("show");
+        clearTimeout(messageTimer);
+        messageTimer = setTimeout(() => message.classList.remove("show"), 1300);
+      }
+
+      function currentState(id) {
+        return LABELS[states[id]] ? states[id] : "possible";
+      }
+
+      function setState(id, state) {
+        states[id] = state;
+        saveStates();
+        const marker = map.querySelector('[data-id="' + id + '"]');
+        if (marker) updateMarker(marker, id);
+        showMessage("候选点 " + id + "：" + LABELS[state]);
+      }
+
+      function updateMarker(marker, id) {
+        const state = currentState(id);
+        marker.dataset.state = state;
+        marker.textContent = state === "question" ? "?" : "";
+        marker.setAttribute("aria-label", "候选点 " + id + "：" + LABELS[state] + "。点击切换状态，长按标记问号");
+        marker.title = "候选点 " + id + "：" + LABELS[state];
+      }
+
+      function makeMarker(point) {
+        const marker = document.createElement("button");
+        marker.type = "button";
+        marker.className = "candidate";
+        marker.dataset.id = point.id;
+        marker.style.setProperty("--x", (point.x * 100) + "%");
+        marker.style.setProperty("--y", (point.y * 100) + "%");
+        updateMarker(marker, point.id);
+        const alias = document.createElement("span");
+        alias.className = "candidate-label";
+        alias.style.setProperty("--x", (point.x * 100) + "%");
+        alias.style.setProperty("--y", (point.y * 100) + "%");
+        alias.textContent = point.alias || "";
+        alias.hidden = !showAliases || !alias.textContent;
+        alias.setAttribute("aria-hidden", "true");
+        marker.aliasLabel = alias;
+
+        let longTimer = null;
+        let longPressed = false;
+        marker.addEventListener("pointerdown", event => {
+          if (event.pointerType === "mouse" && event.button !== 0) return;
+          longPressed = false;
+          clearTimeout(longTimer);
+          longTimer = setTimeout(() => {
+            longPressed = true;
+            setState(point.id, "question");
+          }, 520);
+        });
+        const endPress = () => clearTimeout(longTimer);
+        marker.addEventListener("pointerup", endPress);
+        marker.addEventListener("pointercancel", endPress);
+        marker.addEventListener("pointerleave", endPress);
+        marker.addEventListener("contextmenu", event => event.preventDefault());
+        marker.addEventListener("click", event => {
+          event.preventDefault();
+          if (longPressed) { longPressed = false; return; }
+          const state = currentState(point.id);
+          const next = state === "question"
+            ? "confirmed"
+            : STATES[(STATES.indexOf(state) + 1) % STATES.length];
+          setState(point.id, next);
+        });
+        return marker;
+      }
+
+      function renderPoints() {
+        map.querySelectorAll(".candidate").forEach(marker => marker.remove());
+        pointData.forEach(point => {
+          const marker = makeMarker(point);
+          map.append(marker);
+          marker.after(marker.aliasLabel);
+        });
+      }
+
+      async function start() {
+        try {
+          const response = await fetch(DATA_URL);
+          if (!response.ok) throw new Error("HTTP " + response.status);
+          const data = await response.json();
+          if (!Array.isArray(data.candidates)) throw new Error("Invalid candidate data");
+          pointData = data.candidates;
+          renderPoints();
+        } catch {
+          showMessage("候选点数据加载失败，请确认通过本地 HTTP 服务器访问");
+        }
+      }
+
+      document.querySelector("#reset").addEventListener("click", () => {
+        if (!confirm("重置本局所有密码机状态？")) return;
+        states = {};
+        saveStates();
+        renderPoints();
+        showMessage("已重置为可能刷新状态");
+      });
+
+      start();
+    })();
+  </script>
+</body>
+</html>

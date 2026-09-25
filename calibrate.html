@@ -32,6 +32,7 @@
     }
     .toolbar button:active, .point-row button:active { background: #39412f; }
     .toolbar .primary { background: #d99e2b; color: #211a0c; border-color: #f2c45e; font-weight: 700; }
+    .file-input { display: none; }
     .workarea { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 12px; align-items: start; }
     .map-card, .side-card { border: 1px solid #34392d; border-radius: 12px; background: #20231c; }
     .map-card { padding: 8px; display: grid; place-items: center; }
@@ -76,6 +77,7 @@
     .point-list { display: grid; gap: 6px; max-height: 46svh; overflow: auto; }
     .empty { padding: 12px 0; color: #a8ad9b; font-size: 13px; text-align: center; }
     .point-row { display: grid; grid-template-columns: 28px 1fr 36px; align-items: center; gap: 7px; font-size: 12px; }
+    .point-alias { grid-column: 2 / 4; width: 100%; min-width: 0; border: 1px solid #42483a; border-radius: 7px; padding: 7px; background: #151711; color: #f4f2e8; font: inherit; }
     .point-number { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #dfa52f; color: #261d0c; font-weight: 800; }
     .point-coord { color: #d5d8ca; font-variant-numeric: tabular-nums; }
     .point-row button { min-height: 34px; padding: 4px; color: #ffccbd; }
@@ -103,6 +105,9 @@
       <button id="clear" type="button">清空全部</button>
       <button id="copy" type="button">复制坐标 JSON</button>
       <button id="download" type="button">下载 JSON</button>
+      <button id="chooseFile" type="button">导入 JSON 文件</button>
+      <button id="importText" type="button">导入下方 JSON</button>
+      <input class="file-input" id="fileInput" type="file" accept=".json,application/json">
     </nav>
     <div class="workarea">
       <section class="map-card" aria-label="地图标定画布">
@@ -112,10 +117,10 @@
       </section>
       <aside class="side-card">
         <h2>标定点位 <span id="count">0</span></h2>
-        <p>坐标为地图宽高的比例值，范围 0–1；拖动地图上的标记可微调。</p>
+        <p>坐标为地图宽高的比例值，范围 0–1；拖动地图上的标记可微调。可粘贴 JSON 后点“导入下方 JSON”，也可导入 JSON 文件。</p>
         <div class="point-list" id="pointList"><div class="empty">点击地图添加第一个点位</div></div>
         <div class="status" id="status" aria-live="polite"></div>
-        <textarea class="data" id="data" aria-label="坐标 JSON" spellcheck="false" readonly></textarea>
+        <textarea class="data" id="data" aria-label="坐标 JSON，可粘贴待导入的 JSON" spellcheck="false" placeholder="在此粘贴候选点 JSON，再点击“导入下方 JSON”"></textarea>
       </aside>
     </div>
   </main>
@@ -128,6 +133,7 @@
       const status = document.querySelector("#status");
       const count = document.querySelector("#count");
       const addModeButton = document.querySelector("#addMode");
+      const fileInput = document.querySelector("#fileInput");
       let addMode = true;
       let points = loadPoints();
       let draggingId = null;
@@ -144,9 +150,52 @@
           map: "ArmsFactory",
           image: "assests/maps/ArmsFactory.webp",
           coordinateSystem: "normalized (0-1, origin at top-left)",
-          points: points.map((p, i) => ({ id: i + 1, x: +p.x.toFixed(4), y: +p.y.toFixed(4) }))
+          candidates: points.map((p, i) => ({ id: i + 1, x: +p.x.toFixed(4), y: +p.y.toFixed(4), alias: p.alias || "" }))
         };
       }
+
+      function savePoints() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); } catch { /* Private browsing may disable local storage. */ }
+        data.value = JSON.stringify(outputObject(), null, 2);
+      }
+
+      function importJsonText(text) {
+        let parsed;
+        try { parsed = JSON.parse(text); }
+        catch { status.textContent = "JSON 格式无效，请检查内容后重试"; return false; }
+        const records = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.candidates) ? parsed.candidates : parsed?.points);
+        if (!Array.isArray(records) || !records.length) {
+          status.textContent = "JSON 中没有找到 candidates 或 points 数组";
+          return false;
+        }
+        const imported = [];
+        for (const record of records) {
+          const x = Number(record?.x);
+          const y = Number(record?.y);
+          if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) {
+            status.textContent = "导入失败：每个点都需要 0–1 范围内的 x、y 坐标";
+            return false;
+          }
+          imported.push({
+            id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}-${imported.length}`,
+            x, y, alias: String(record.alias ?? record.name ?? record.label ?? "").slice(0, 32)
+          });
+        }
+        if (points.length && !confirm(`导入的 ${imported.length} 个点位会替换当前 ${points.length} 个点位，继续吗？`)) return false;
+        points = imported;
+        render(`已导入 ${points.length} 个点位及其别称`);
+        return true;
+      }
+
+      document.querySelector("#chooseFile").addEventListener("click", () => fileInput.click());
+      document.querySelector("#importText").addEventListener("click", () => importJsonText(data.value));
+      fileInput.addEventListener("change", async () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        try { importJsonText(await file.text()); }
+        catch { status.textContent = "读取文件失败，请重新选择 JSON 文件"; }
+        fileInput.value = "";
+      });
 
       function render(message = "") {
         map.querySelectorAll(".marker").forEach(el => el.remove());
@@ -181,6 +230,17 @@
             const coords = document.createElement("span");
             coords.className = "point-coord";
             coords.textContent = `x ${point.x.toFixed(4)} · y ${point.y.toFixed(4)}`;
+            const alias = document.createElement("input");
+            alias.className = "point-alias";
+            alias.type = "text";
+            alias.maxLength = 32;
+            alias.placeholder = `点位 ${index + 1} 的别称（可留空）`;
+            alias.value = point.alias || "";
+            alias.setAttribute("aria-label", `编辑点位 ${index + 1} 的别称`);
+            alias.addEventListener("input", () => {
+              point.alias = alias.value;
+              savePoints();
+            });
             const remove = document.createElement("button");
             remove.type = "button";
             remove.textContent = "删";
@@ -189,13 +249,12 @@
               points = points.filter(p => p.id !== point.id);
               render("已删除该点位");
             });
-            row.append(number, coords, remove);
+            row.append(number, coords, remove, alias);
             list.append(row);
           });
         }
 
-        data.value = JSON.stringify(outputObject(), null, 2);
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); } catch { /* Private browsing may disable local storage. */ }
+        savePoints();
         if (message) status.textContent = message;
       }
 
