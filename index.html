@@ -77,6 +77,7 @@
       <select id="map-select">
         <option value="ArmsFactory">军工厂</option>
         <option value="Sacred_Heart_Hospital">圣心医院</option>
+        <option value="TheRedChurch">红教堂</option>
       </select>
     </label>
     <div class="legend" aria-label="状态图例">
@@ -119,6 +120,11 @@
           name: "圣心医院", image: "assests/maps/Sacred_Heart_Hospital.webp",
           dataUrl: "assests/data/Sacred_Heart_Hospital-cipher-candidates.json",
           storageKey: "identityv-sacred-heart-hospital-match-v1"
+        },
+        TheRedChurch: {
+          name: "红教堂", image: "assests/maps/TheRedChurch.webp",
+          dataUrl: "assests/data/TheRedChurch-cipher-candidates.json",
+          storageKey: "identityv-the-red-church-match-v1"
         }
       };
       const ACTIVE_MAP_KEY = "identityv-active-map-v1";
@@ -343,6 +349,13 @@
         const matching = DISTRIBUTIONS.filter(group => known.every(id => group.points.includes(id)));
         const markers = map.querySelectorAll(".candidate");
         markers.forEach(marker => { delete marker.dataset.prediction; });
+
+        if (!DISTRIBUTIONS.length) {
+          certainPointIds = [];
+          applyInferenceButton.disabled = true;
+          inferenceText.textContent = "此地图的候选点和刷新组合尚未标定。请先在 calibrate 页面完成标定。";
+          return;
+        }
 
         if (!matching.length) {
           certainPointIds = [];
