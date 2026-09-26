@@ -141,7 +141,7 @@
 <body>
   <header>
     <h1 id="mapTitle">地图标定</h1>
-    <p>点击地图放置标记；按住标记拖动微调。密码机为圆形，地窖为方形（每图最多 3 个，可留空）。坐标按地图分别保存在本机浏览器。</p>
+    <p>点击地图放置标记；按住标记拖动微调。密码机为圆形，地窖为方形，地窖候选点数量不限。坐标按地图分别保存在本机浏览器。</p>
     <label class="map-select" for="mapSelect">当前地图
       <select id="mapSelect">
         <option value="ArmsFactory">军工厂</option>
@@ -186,8 +186,8 @@
         <p>坐标为地图宽高的比例值，范围 0–1；拖动地图上的标记可微调。可粘贴 JSON 后点“导入下方 JSON”，也可导入 JSON 文件。</p>
         <p>首次点击“一键保存到项目”时选择项目根目录；覆盖旧 JSON 前，会先将旧版归档到 assests/data/archive 文件夹。</p>
         <div class="point-list" id="pointList"><div class="empty">点击地图添加第一个点位</div></div>
-        <h2>地窖候选点 <span id="hatchCount">0</span>/3</h2>
-        <p>地窖与密码机写在同一份 JSON 的 hatches 字段；不标则对局页不出现地窖功能。每局三个位置里只会出现其中一个。</p>
+        <h2>地窖候选点 <span id="hatchCount">0</span></h2>
+        <p>地窖与密码机写在同一份 JSON 的 hatches 字段；不标则对局页不出现地窖功能。每局所有候选点中只会有一个地窖。</p>
         <div class="point-list" id="hatchList"><div class="empty">切换添加目标为地窖后，点击地图添加</div></div>
         <div class="status" id="status" aria-live="polite"></div>
         <h2>位置规律</h2>
@@ -282,7 +282,6 @@
       const hatchList = document.querySelector("#hatchList");
       const hatchCount = document.querySelector("#hatchCount");
       const fileInput = document.querySelector("#fileInput");
-      const MAX_HATCHES = 3;
       let addMode = true;
       let addTarget = "cipher";
       let currentMapId = "ArmsFactory";
@@ -380,7 +379,7 @@
         if (hatchPoints.length) {
           payload.hatches = {
             rule: "exactly-one",
-            candidates: hatchPoints.slice(0, MAX_HATCHES).map((p, i) => ({
+            candidates: hatchPoints.map((p, i) => ({
               id: i + 1, x: +p.x.toFixed(4), y: +p.y.toFixed(4), alias: p.alias || ""
             }))
           };
@@ -458,7 +457,7 @@
       function loadStoredHatches(storageKey) {
         try {
           const raw = localStorage.getItem(`${storageKey}-hatches`);
-          return raw === null ? null : normalizePoints(JSON.parse(raw)).slice(0, MAX_HATCHES);
+          return raw === null ? null : normalizePoints(JSON.parse(raw));
         } catch { return []; }
       }
 
@@ -520,7 +519,7 @@
         const savedHatchCandidates = Array.isArray(existing.hatches)
           ? existing.hatches
           : (Array.isArray(existing.hatches?.candidates) ? existing.hatches.candidates : []);
-        hatchPoints = storedHatches !== null ? storedHatches : normalizePoints(savedHatchCandidates).slice(0, MAX_HATCHES);
+        hatchPoints = storedHatches !== null ? storedHatches : normalizePoints(savedHatchCandidates);
         let savedRules = null;
         try { savedRules = localStorage.getItem(`${mapInfo.storageKey}-rules`); } catch {}
         distributionRulesText = savedRules !== null
@@ -567,10 +566,6 @@
           const hatchRecords = Array.isArray(parsed.hatches)
             ? parsed.hatches
             : (Array.isArray(parsed.hatches?.candidates) ? parsed.hatches.candidates : []);
-          if (hatchRecords.length > MAX_HATCHES) {
-            status.textContent = `导入失败：每张地图最多包含 ${MAX_HATCHES} 个地窖候选点`;
-            return false;
-          }
           importedHatches = [];
           for (const record of hatchRecords) {
             const x = Number(record?.x);
@@ -584,7 +579,6 @@
               x, y, alias: String(record.alias ?? record.name ?? record.label ?? "").slice(0, 32)
             });
           }
-          importedHatches = importedHatches.slice(0, MAX_HATCHES);
         }
         points = imported;
         hatchPoints = importedHatches;
@@ -604,7 +598,7 @@
       mapSelect.addEventListener("change", () => loadMap(mapSelect.value));
       addTargetSelect.addEventListener("change", () => {
         addTarget = addTargetSelect.value;
-        status.textContent = addTarget === "hatch" ? "点击地图添加地窖（最多 3 个）" : "点击地图添加密码机";
+        status.textContent = addTarget === "hatch" ? "点击地图添加地窖候选点（数量不限）" : "点击地图添加密码机";
       });
       rules.addEventListener("input", saveRules);
       previewToggle.addEventListener("click", () => {
@@ -766,10 +760,6 @@
         const position = getMapPoint(event);
         const point = { id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`, ...position };
         if (addTarget === "hatch") {
-          if (hatchPoints.length >= MAX_HATCHES) {
-            status.textContent = "每张地图最多标定 3 个地窖候选点。";
-            return;
-          }
           hatchPoints.push(point);
           render("已添加地窖候选点；可拖动方形标记微调");
         } else {

@@ -531,15 +531,11 @@
           return;
         }
         const ids = hatchData.map(point => Number(point.id));
-        if (ids.length !== 3) {
-          hatchInferenceText.textContent = `请在 calibrate 页为此地图标定 3 个地窖候选点；当前有 ${ids.length} 个。`;
-          return;
-        }
         const present = ids.filter(id => currentHatchState(id) === "confirmed");
         const absent = ids.filter(id => currentHatchState(id) === "absent");
         const remaining = ids.filter(id => currentHatchState(id) !== "absent");
         if (present.length > 1 || (present.length === 1 && absent.includes(present[0])) || remaining.length === 0) {
-          hatchInferenceText.textContent = "确认有地窖与确认无地窖的记录冲突。地窖三选一，请检查正方形标记。";
+          hatchInferenceText.textContent = "确认记录冲突：候选点中只能有一个地窖。请检查正方形标记。";
           return;
         }
         if (present.length === 1) {
@@ -565,7 +561,7 @@
           const id = Number(marker.dataset.id);
           marker.dataset.prediction = remainingSet.has(id) ? "possible" : "excluded";
         });
-        hatchInferenceText.textContent = `三选一。仍可能：${formatHatchIds(remaining)}。`;
+        hatchInferenceText.textContent = `候选点中只有一个地窖。仍可能：${formatHatchIds(remaining)}。`;
       }
 
       function formatPointIds(ids) {
