@@ -60,6 +60,10 @@
     .candidate[data-state="decoding"] { background: #f0c442; color: #33250b; }
     .candidate[data-state="nearly"] { background: #4ba9ec; color: #07283e; }
     .candidate[data-state="complete"] { background: #55c873; color: #0d3217; }
+    :root[data-center-dot="on"] .candidate[data-state="possible"]::after {
+      content: ""; width: 14%; aspect-ratio: 1; border-radius: 50%;
+      background: #45e56d; box-shadow: 0 0 3px #45e56dcc;
+    }
     .candidate[data-prediction="certain"] { outline: 2px solid #d8f2a1; outline-offset: 2px; }
     .candidate[data-prediction="excluded"]:not([data-state="absent"]) { opacity: .24; filter: grayscale(1); }
     .candidate-label { position: absolute; left: var(--x); top: var(--y); z-index: 1; transform: translate(-50%, 13px); padding: 2px 5px; border-radius: 5px; background: #11130fdb; color: #fff; font-size: 10px; line-height: 1.2; white-space: nowrap; pointer-events: none; }
@@ -129,6 +133,7 @@
       <input id="marker-size" type="range" min="12" max="64" step="1" value="20">
       <output class="size-value" id="marker-size-value" for="marker-size">20 px</output>
     </label>
+    <label class="size-control"><input id="show-center-dot" type="checkbox" checked>可能点位显示绿色中心点</label>
     <label class="size-control"><input id="show-aliases" type="checkbox">显示密码机别称</label>
     <label class="size-control" id="hatch-toggle-row" hidden><input id="show-hatches" type="checkbox" checked>显示地窖</label>
     <div class="inference" id="inference" role="status" aria-live="polite"><strong>分布推测</strong><span id="inference-text">正在读取候选点…</span><div class="inference-count">还有 <output id="unresolved-count">—</output> 台机子的位置无法推测</div><div class="inference-hatch" id="inference-hatch" hidden><strong>地窖推测</strong><span id="inference-hatch-text"></span></div></div>
@@ -197,6 +202,7 @@
       };
       const ACTIVE_MAP_KEY = "identityv-active-map-v1";
       const SIZE_KEY = "identityv-armsfactory-marker-size-v1";
+      const CENTER_DOT_KEY = "identityv-show-possible-center-dot-v1";
       const ALIAS_KEY = "identityv-armsfactory-show-aliases-v1";
       const AUTO_APPLY_KEY = "identityv-auto-apply-v1";
       const STATES = ["possible", "confirmed", "decoding", "nearly", "complete"];
@@ -220,6 +226,7 @@
       const message = document.querySelector("#message");
       const sizeSlider = document.querySelector("#marker-size");
       const sizeOutput = document.querySelector("#marker-size-value");
+      const centerDotToggle = document.querySelector("#show-center-dot");
       const aliasToggle = document.querySelector("#show-aliases");
       const inferenceText = document.querySelector("#inference-text");
       const unresolvedCount = document.querySelector("#unresolved-count");
@@ -354,6 +361,15 @@
       sizeSlider.addEventListener("change", () => {
         applyMarkerSize(sizeSlider.value, true);
         commitHistory();
+      });
+      try {
+        const savedCenterDot = localStorage.getItem(CENTER_DOT_KEY);
+        centerDotToggle.checked = savedCenterDot === null ? true : savedCenterDot === "true";
+      } catch { centerDotToggle.checked = true; }
+      syncCenterDotVisibility();
+      centerDotToggle.addEventListener("change", () => {
+        syncCenterDotVisibility();
+        try { localStorage.setItem(CENTER_DOT_KEY, String(centerDotToggle.checked)); } catch {}
       });
       try { showAliases = localStorage.getItem(ALIAS_KEY) === "true"; } catch {}
       aliasToggle.checked = showAliases;
@@ -769,6 +785,10 @@
         });
         if (changed) saveStates();
         return changed;
+      }
+
+      function syncCenterDotVisibility() {
+        document.documentElement.dataset.centerDot = centerDotToggle.checked ? "on" : "off";
       }
 
       lastHistorySnapshot = captureHistorySnapshot();
