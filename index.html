@@ -706,7 +706,14 @@
 
       mapSelect.addEventListener("change", async () => {
         const previous = captureHistorySnapshot();
-        await loadMap(mapSelect.value);
+        const nextMapId = mapSelect.value;
+        if (nextMapId !== currentMapId) {
+          mapStates[nextMapId] = {};
+          mapHatchStates[nextMapId] = {};
+          try { localStorage.setItem(MAPS[nextMapId].storageKey, "{}"); } catch {}
+          try { localStorage.setItem(hatchKey(MAPS[nextMapId].storageKey), "{}"); } catch {}
+        }
+        await loadMap(nextMapId);
         const next = captureHistorySnapshot();
         if (next !== previous) {
           undoStack.push(previous);
@@ -715,6 +722,7 @@
           lastHistorySnapshot = next;
           updateHistoryButtons();
         }
+        if (nextMapId !== previous.activeMap) showMessage("已切换地图，本局密码机和地窖状态已重置");
       });
 
       document.querySelector("#reset").addEventListener("click", () => {
