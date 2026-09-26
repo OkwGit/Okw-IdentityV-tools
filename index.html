@@ -126,7 +126,7 @@
     </div>
     <label class="size-control" for="marker-size">
       <span>图标大小</span>
-      <input id="marker-size" type="range" min="12" max="34" step="1" value="20">
+      <input id="marker-size" type="range" min="12" max="64" step="1" value="20">
       <output class="size-value" id="marker-size-value" for="marker-size">20 px</output>
     </label>
     <label class="size-control"><input id="show-aliases" type="checkbox">显示密码机别称</label>
@@ -337,7 +337,7 @@
       }
 
       function applyMarkerSize(value, save = true) {
-        const size = Math.max(12, Math.min(34, Number(value) || 20));
+        const size = Math.max(12, Math.min(64, Number(value) || 20));
         document.documentElement.style.setProperty("--marker-size", size + "px");
         document.documentElement.style.setProperty("--hatch-size", size + "px");
         sizeSlider.value = String(size);
