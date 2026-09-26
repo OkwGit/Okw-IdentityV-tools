@@ -12,6 +12,7 @@
       background: #11130f;
       color: #f4f2e8;
       --marker-size: 20px;
+      --hatch-size: 20px;
     }
     * { box-sizing: border-box; }
     body { min-height: 100svh; margin: 0; display: flex; flex-direction: column; }
@@ -29,11 +30,16 @@
     .swatch.decoding { background: #f0c442; border-color: #fff2b8; }
     .swatch.nearly { background: #4ba9ec; border-color: #d8f0ff; }
     .swatch.complete { background: #55c873; border-color: #ddffe4; }
+    .swatch.hatch-unknown { border-radius: 2px; background: transparent; border-color: #9aa390; }
+    .swatch.hatch-absent { border-radius: 2px; background: #e65f66; border-color: #ffc2c5; color: #fff; }
+    .swatch.hatch-confirmed { border-radius: 2px; background: #c56bdb; border-color: #f0c6ff; }
+    .legend-item[hidden], .size-control[hidden], .inference-hatch[hidden] { display: none; }
     .size-control { display: flex; align-items: center; justify-content: center; gap: 9px; margin: 10px auto 0; color: #d4d7cb; font-size: 12px; }
     .size-control input { width: min(45vw, 190px); accent-color: #aeb89d; }
     .size-value { min-width: 38px; text-align: left; color: #f4f2e8; font-variant-numeric: tabular-nums; }
     .toolbar { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
     .toolbar button { min-height: 32px; padding: 4px 10px; border: 1px solid #666b5d; border-radius: 9px; background: #282d23; color: #f4f2e8; font: inherit; font-size: 12px; }
+    .toolbar .auto-apply { display: flex; align-items: center; gap: 6px; padding: 4px 8px; color: #dce2cf; font-size: 12px; }
     .toolbar button:disabled { opacity: .45; cursor: not-allowed; }
     main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 0 8px 10px; }
     .map { position: relative; width: min(100%, calc((100svh - 220px) * var(--map-aspect, 1.1806))); aspect-ratio: var(--map-aspect, 1.1806); background: #20241e; }
@@ -58,10 +64,29 @@
     .candidate[data-prediction="excluded"]:not([data-state="absent"]) { opacity: .24; filter: grayscale(1); }
     .candidate-label { position: absolute; left: var(--x); top: var(--y); z-index: 1; transform: translate(-50%, 13px); padding: 2px 5px; border-radius: 5px; background: #11130fdb; color: #fff; font-size: 10px; line-height: 1.2; white-space: nowrap; pointer-events: none; }
     .candidate-label[hidden] { display: none; }
+    .hatch {
+      position: absolute; left: var(--x); top: var(--y); z-index: 1;
+      width: var(--hatch-size); aspect-ratio: 1;
+      display: grid; place-items: center; padding: 0;
+      transform: translate(-50%, -50%);
+      border: 2px solid #9aa390; border-radius: 3px;
+      background: rgba(48, 52, 48, .35); color: #dedfd7;
+      font: 800 calc(var(--hatch-size) * .55)/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+      box-shadow: 0 1px 4px #0009; cursor: pointer; touch-action: manipulation;
+      user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+    }
+    .hatch[data-state="absent"] { background: #e65f66; border-color: #ffc2c5; color: #fff; }
+    .hatch[data-state="confirmed"] { background: #c56bdb; border-color: #f0c6ff; color: #2a1033; }
+    .hatch[data-prediction="certain"] { outline: 2px solid #d8f2a1; outline-offset: 2px; }
+    .hatch[data-prediction="excluded"]:not([data-state="absent"]) { opacity: .24; filter: grayscale(1); }
+    .hatch-label { position: absolute; left: var(--x); top: var(--y); z-index: 1; transform: translate(-50%, 13px); padding: 2px 5px; border-radius: 5px; background: #201326db; color: #f3d9ff; font-size: 10px; line-height: 1.2; white-space: nowrap; pointer-events: none; }
+    .hatch[hidden], .hatch-label[hidden] { display: none; }
+    .hatch:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
     .inference { max-width: 760px; margin: 8px auto 0; padding: 6px 9px; border: 1px solid #454c3b; border-radius: 8px; background: #1b2019; color: #dce5ce; font-size: 11px; line-height: 1.45; text-align: left; }
     .inference strong { color: #e8efdb; margin-right: 5px; }
     .inference-count { margin-top: 5px; color: #f1e8bd; font-size: 12px; font-weight: 650; }
     .inference-count output { color: #fff; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .inference-hatch { margin-top: 6px; padding-top: 6px; border-top: 1px solid #454c3b; }
     .candidate:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
     .message { position: fixed; z-index: 2; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 24px); padding: 7px 11px; border: 1px solid #505646; border-radius: 999px; background: #22271def; color: #e9e9df; font-size: 12px; text-align: center; opacity: 0; pointer-events: none; transition: opacity .15s; }
     .message.show { opacity: 1; }
@@ -74,7 +99,7 @@
 <body>
   <header>
     <h1 id="pageTitle">密码机记录</h1>
-    <p class="instructions">点击候选点切换状态；长按约半秒标记确认无机。状态保存在本机浏览器。</p>
+    <p class="instructions">圆形为密码机：点击切换状态，长按约半秒确认无机。正方形为地窖：每次点击依次切换“未知 → 无地窖（×）→ 有地窖（实心）→ 未知”。状态保存在本机浏览器。</p>
     <label class="map-select" for="map-select">当前地图
       <select id="map-select">
         <option value="ArmsFactory">军工厂</option>
@@ -95,6 +120,9 @@
       <span class="legend-item"><i class="swatch decoding"></i>正在破译</span>
       <span class="legend-item"><i class="swatch nearly"></i>快破译完</span>
       <span class="legend-item"><i class="swatch complete"></i>破译完成</span>
+      <span class="legend-item hatch-legend" hidden><i class="swatch hatch-unknown"></i>地窖未知</span>
+      <span class="legend-item hatch-legend" hidden><i class="swatch hatch-absent">×</i>确认无地窖</span>
+      <span class="legend-item hatch-legend" hidden><i class="swatch hatch-confirmed"></i>确认有地窖</span>
     </div>
     <label class="size-control" for="marker-size">
       <span>图标大小</span>
@@ -102,11 +130,13 @@
       <output class="size-value" id="marker-size-value" for="marker-size">20 px</output>
     </label>
     <label class="size-control"><input id="show-aliases" type="checkbox">显示密码机别称</label>
-    <div class="inference" id="inference" role="status" aria-live="polite"><strong>分布推测</strong><span id="inference-text">正在读取候选点…</span><div class="inference-count">还有 <output id="unresolved-count">—</output> 台机子的位置无法推测</div></div>
+    <label class="size-control" id="hatch-toggle-row" hidden><input id="show-hatches" type="checkbox" checked>显示地窖</label>
+    <div class="inference" id="inference" role="status" aria-live="polite"><strong>分布推测</strong><span id="inference-text">正在读取候选点…</span><div class="inference-count">还有 <output id="unresolved-count">—</output> 台机子的位置无法推测</div><div class="inference-hatch" id="inference-hatch" hidden><strong>地窖推测</strong><span id="inference-hatch-text"></span></div></div>
     <div class="toolbar">
       <button id="undo" type="button" title="Ctrl+Z" disabled>撤销</button>
       <button id="redo" type="button" title="Ctrl+Shift+Z" disabled>重做</button>
       <button id="apply-inference" type="button" disabled>一键 Apply：推测必有 → 白色</button>
+      <label class="auto-apply"><input id="auto-apply" type="checkbox">自动 Apply 推测必有</label>
       <button id="reset" type="button">重置本局</button>
     </div>
   </header>
@@ -168,8 +198,11 @@
       const ACTIVE_MAP_KEY = "identityv-active-map-v1";
       const SIZE_KEY = "identityv-armsfactory-marker-size-v1";
       const ALIAS_KEY = "identityv-armsfactory-show-aliases-v1";
+      const AUTO_APPLY_KEY = "identityv-auto-apply-v1";
       const STATES = ["possible", "confirmed", "decoding", "nearly", "complete"];
       const POSITIVE_STATES = new Set(["confirmed", "decoding", "nearly", "complete"]);
+      const HATCH_STATES = ["unknown", "absent", "confirmed"];
+      const HATCH_LABELS = { unknown: "地窖未知", absent: "确认无地窖", confirmed: "确认有地窖" };
       let currentMapId = "ArmsFactory";
       try {
         const savedMapId = localStorage.getItem(ACTIVE_MAP_KEY);
@@ -191,19 +224,33 @@
       const inferenceText = document.querySelector("#inference-text");
       const unresolvedCount = document.querySelector("#unresolved-count");
       const applyInferenceButton = document.querySelector("#apply-inference");
+      const autoApplyToggle = document.querySelector("#auto-apply");
       const undoButton = document.querySelector("#undo");
       const redoButton = document.querySelector("#redo");
+      const hatchToggleRow = document.querySelector("#hatch-toggle-row");
+      const hatchToggle = document.querySelector("#show-hatches");
+      const hatchInference = document.querySelector("#inference-hatch");
+      const hatchInferenceText = document.querySelector("#inference-hatch-text");
       let showAliases = false;
+      let showHatches = true;
+      let autoApply = false;
       let pointData = [];
+      let hatchData = [];
       let certainPointIds = [];
       const mapStates = Object.fromEntries(Object.entries(MAPS).map(([id, config]) => [id, loadStates(config.storageKey)]));
+      const mapHatchStates = Object.fromEntries(Object.entries(MAPS).map(([id, config]) => [id, loadStates(hatchKey(config.storageKey))]));
       let states = mapStates[currentMapId];
+      let hatchStates = mapHatchStates[currentMapId];
       let mapLoadSequence = 0;
       let messageTimer;
       const undoStack = [];
       const redoStack = [];
       const HISTORY_LIMIT = 100;
       let lastHistorySnapshot = "";
+
+      function hatchKey(storageKey) {
+        return storageKey.replace(/-match-v1$/u, "-hatch-v1");
+      }
 
       function loadStates(storageKey) {
         try {
@@ -217,12 +264,20 @@
         try { localStorage.setItem(MAPS[currentMapId].storageKey, JSON.stringify(states)); } catch {}
       }
 
+      function saveHatchStates() {
+        mapHatchStates[currentMapId] = hatchStates;
+        try { localStorage.setItem(hatchKey(MAPS[currentMapId].storageKey), JSON.stringify(hatchStates)); } catch {}
+      }
+
       // Extend this snapshot with new maps and stateful controls so they share the same undo/redo history.
       function captureHistorySnapshot() {
         return JSON.stringify({
           activeMap: currentMapId,
-          maps: Object.fromEntries(Object.keys(MAPS).map(id => [id, { pointStates: { ...mapStates[id] } }])),
-          controls: { markerSize: Number(sizeSlider.value), showAliases }
+          maps: Object.fromEntries(Object.keys(MAPS).map(id => [id, {
+            pointStates: { ...mapStates[id] },
+            hatchStates: { ...mapHatchStates[id] }
+          }])),
+          controls: { markerSize: Number(sizeSlider.value), showAliases, showHatches, autoApply }
         });
       }
 
@@ -245,15 +300,23 @@
         const snapshot = JSON.parse(snapshotText);
         for (const id of Object.keys(MAPS)) {
           mapStates[id] = { ...(snapshot.maps?.[id]?.pointStates || {}) };
+          mapHatchStates[id] = { ...(snapshot.maps?.[id]?.hatchStates || {}) };
           try { localStorage.setItem(MAPS[id].storageKey, JSON.stringify(mapStates[id])); } catch {}
+          try { localStorage.setItem(hatchKey(MAPS[id].storageKey), JSON.stringify(mapHatchStates[id])); } catch {}
         }
         currentMapId = MAPS[snapshot.activeMap] ? snapshot.activeMap : "ArmsFactory";
         states = mapStates[currentMapId];
+        hatchStates = mapHatchStates[currentMapId];
         showAliases = Boolean(snapshot.controls?.showAliases);
+        showHatches = snapshot.controls?.showHatches !== false;
+        autoApply = Boolean(snapshot.controls?.autoApply);
         aliasToggle.checked = showAliases;
+        hatchToggle.checked = showHatches;
+        autoApplyToggle.checked = autoApply;
         try { localStorage.setItem(ALIAS_KEY, String(showAliases)); } catch {}
+        try { localStorage.setItem(AUTO_APPLY_KEY, String(autoApply)); } catch {}
         applyMarkerSize(snapshot.controls?.markerSize, true);
-        await loadMap(currentMapId);
+        await loadMap(currentMapId, { keepShowHatches: true });
         lastHistorySnapshot = captureHistorySnapshot();
       }
 
@@ -276,6 +339,7 @@
       function applyMarkerSize(value, save = true) {
         const size = Math.max(12, Math.min(34, Number(value) || 20));
         document.documentElement.style.setProperty("--marker-size", size + "px");
+        document.documentElement.style.setProperty("--hatch-size", size + "px");
         sizeSlider.value = String(size);
         sizeOutput.value = size + " px";
         sizeOutput.textContent = size + " px";
@@ -297,6 +361,21 @@
         showAliases = aliasToggle.checked;
         try { localStorage.setItem(ALIAS_KEY, String(showAliases)); } catch {}
         map.querySelectorAll(".candidate-label").forEach(label => { label.hidden = !showAliases || !label.textContent; });
+        map.querySelectorAll(".hatch-label").forEach(label => { label.hidden = !showHatches || !showAliases || !label.textContent; });
+        commitHistory();
+      });
+      try { autoApply = localStorage.getItem(AUTO_APPLY_KEY) === "true"; } catch {}
+      autoApplyToggle.checked = autoApply;
+      autoApplyToggle.addEventListener("change", () => {
+        autoApply = autoApplyToggle.checked;
+        try { localStorage.setItem(AUTO_APPLY_KEY, String(autoApply)); } catch {}
+        renderInference();
+        commitHistory();
+        showMessage(autoApply ? "自动 Apply 已开启" : "自动 Apply 已关闭");
+      });
+      hatchToggle.addEventListener("change", () => {
+        showHatches = hatchToggle.checked;
+        syncHatchVisibility();
         commitHistory();
       });
 
@@ -314,11 +393,33 @@
       function setState(id, state) {
         states[id] = state;
         saveStates();
-        const marker = map.querySelector('[data-id="' + id + '"]');
+        const marker = map.querySelector('.candidate[data-id="' + id + '"]');
         if (marker) updateMarker(marker, id);
         showMessage("候选点 " + id + "：" + LABELS[state]);
         renderInference();
         commitHistory();
+      }
+
+      function currentHatchState(id) {
+        return HATCH_LABELS[hatchStates[id]] ? hatchStates[id] : "unknown";
+      }
+
+      function setHatchState(id, state) {
+        hatchStates[id] = state;
+        saveHatchStates();
+        const marker = map.querySelector('.hatch[data-id="' + id + '"]');
+        if (marker) updateHatchMarker(marker, id);
+        showMessage("地窖 " + id + "：" + HATCH_LABELS[state]);
+        renderInference();
+        commitHistory();
+      }
+
+      function updateHatchMarker(marker, id) {
+        const state = currentHatchState(id);
+        marker.dataset.state = state;
+        marker.textContent = state === "absent" ? "×" : "";
+        marker.setAttribute("aria-label", "地窖 " + id + "：" + HATCH_LABELS[state] + "。点击依次切换未知、无地窖、有地窖");
+        marker.title = "地窖 " + id + "：" + HATCH_LABELS[state];
       }
 
       function updateMarker(marker, id) {
@@ -372,6 +473,101 @@
         return marker;
       }
 
+      function makeHatchMarker(point) {
+        const marker = document.createElement("button");
+        marker.type = "button";
+        marker.className = "hatch";
+        marker.dataset.id = point.id;
+        marker.style.setProperty("--x", (point.x * 100) + "%");
+        marker.style.setProperty("--y", (point.y * 100) + "%");
+        updateHatchMarker(marker, point.id);
+        const alias = document.createElement("span");
+        alias.className = "hatch-label";
+        alias.style.setProperty("--x", (point.x * 100) + "%");
+        alias.style.setProperty("--y", (point.y * 100) + "%");
+        alias.textContent = point.alias || "";
+        alias.hidden = !showHatches || !showAliases || !alias.textContent;
+        alias.setAttribute("aria-hidden", "true");
+        marker.aliasLabel = alias;
+        marker.addEventListener("contextmenu", event => event.preventDefault());
+        marker.addEventListener("click", event => {
+          event.preventDefault();
+          const state = currentHatchState(point.id);
+          const next = HATCH_STATES[(HATCH_STATES.indexOf(state) + 1) % HATCH_STATES.length];
+          setHatchState(point.id, next);
+        });
+        return marker;
+      }
+
+      function formatHatchIds(ids) {
+        return ids.map(id => {
+          const point = hatchData.find(item => Number(item.id) === id);
+          return point?.alias ? `${point.alias}（窖${id}）` : `地窖 ${id}`;
+        }).join("、") || "无";
+      }
+
+      function syncHatchVisibility() {
+        const hasHatches = hatchData.length > 0;
+        hatchToggleRow.hidden = !hasHatches;
+        hatchInference.hidden = !hasHatches;
+        document.querySelectorAll(".hatch-legend").forEach(item => { item.hidden = !hasHatches; });
+        if (!hasHatches) {
+          showHatches = false;
+          hatchToggle.checked = false;
+        } else {
+          hatchToggle.checked = showHatches;
+        }
+        map.querySelectorAll(".hatch").forEach(marker => { marker.hidden = !showHatches; });
+        map.querySelectorAll(".hatch-label").forEach(label => {
+          label.hidden = !showHatches || !showAliases || !label.textContent;
+        });
+      }
+
+      function renderHatchInference() {
+        const hatches = map.querySelectorAll(".hatch");
+        hatches.forEach(marker => { delete marker.dataset.prediction; });
+        if (!hatchData.length) {
+          hatchInferenceText.textContent = "";
+          return;
+        }
+        const ids = hatchData.map(point => Number(point.id));
+        if (ids.length !== 3) {
+          hatchInferenceText.textContent = `请在 calibrate 页为此地图标定 3 个地窖候选点；当前有 ${ids.length} 个。`;
+          return;
+        }
+        const present = ids.filter(id => currentHatchState(id) === "confirmed");
+        const absent = ids.filter(id => currentHatchState(id) === "absent");
+        const remaining = ids.filter(id => currentHatchState(id) !== "absent");
+        if (present.length > 1 || (present.length === 1 && absent.includes(present[0])) || remaining.length === 0) {
+          hatchInferenceText.textContent = "确认有地窖与确认无地窖的记录冲突。地窖三选一，请检查正方形标记。";
+          return;
+        }
+        if (present.length === 1) {
+          const certain = present[0];
+          hatches.forEach(marker => {
+            const id = Number(marker.dataset.id);
+            marker.dataset.prediction = id === certain ? "certain" : "excluded";
+          });
+          hatchInferenceText.textContent = `已确定：${formatHatchIds([certain])}。其余地窖点已排除。`;
+          return;
+        }
+        if (remaining.length === 1) {
+          const certain = remaining[0];
+          hatches.forEach(marker => {
+            const id = Number(marker.dataset.id);
+            marker.dataset.prediction = id === certain ? "certain" : "excluded";
+          });
+          hatchInferenceText.textContent = `其余点已排除，推测必有：${formatHatchIds([certain])}。`;
+          return;
+        }
+        const remainingSet = new Set(remaining);
+        hatches.forEach(marker => {
+          const id = Number(marker.dataset.id);
+          marker.dataset.prediction = remainingSet.has(id) ? "possible" : "excluded";
+        });
+        hatchInferenceText.textContent = `三选一。仍可能：${formatHatchIds(remaining)}。`;
+      }
+
       function formatPointIds(ids) {
         return ids.map(id => {
           const point = pointData.find(item => Number(item.id) === id);
@@ -399,6 +595,7 @@
           unresolvedCount.value = "—";
           unresolvedCount.textContent = "—";
           inferenceText.textContent = "此地图的候选点和刷新组合尚未标定。请先在 calibrate 页面完成标定。";
+          renderHatchInference();
           return;
         }
 
@@ -408,6 +605,7 @@
           unresolvedCount.value = "—";
           unresolvedCount.textContent = "—";
           inferenceText.textContent = "确认有机与确认无机的记录和所有已知布局都冲突。请检查标记，或补充分布规律。";
+          renderHatchInference();
           return;
         }
 
@@ -425,6 +623,10 @@
           const id = Number(marker.dataset.id);
           marker.dataset.prediction = commonSet.has(id) ? "certain" : possibleSet.has(id) ? "possible" : "excluded";
         });
+        if (autoApply) {
+          const changed = applyCertainPredictions();
+          if (changed) commitHistory();
+        }
 
         if (matching.length === 1) {
           inferenceText.textContent = `唯一匹配第 ${matching[0].id} 组。整组机位：${formatPointIds(matching[0].points)}。绿色外圈为推测存在，变暗点位已排除。`;
@@ -433,15 +635,22 @@
           const groupNames = matching.map(group => `第${group.id}组`).join("、");
           inferenceText.textContent = `仍符合${matching.length}组（${groupNames}）。共同必有：${formatPointIds(common)}；仍需区分：${formatPointIds(uncertain)}。点击确认已找到的点位继续缩小范围。`;
         }
+        renderHatchInference();
       }
 
       function renderPoints() {
-        map.querySelectorAll(".candidate, .candidate-label").forEach(element => element.remove());
+        map.querySelectorAll(".candidate, .candidate-label, .hatch, .hatch-label").forEach(element => element.remove());
         pointData.forEach(point => {
           const marker = makeMarker(point);
           map.append(marker);
           marker.after(marker.aliasLabel);
         });
+        hatchData.forEach(point => {
+          const marker = makeHatchMarker(point);
+          map.append(marker);
+          marker.after(marker.aliasLabel);
+        });
+        syncHatchVisibility();
         renderInference();
       }
 
@@ -451,12 +660,13 @@
         }
       }
 
-      async function loadMap(mapId) {
+      async function loadMap(mapId, options = {}) {
         const config = MAPS[mapId];
         if (!config) return;
         const sequence = ++mapLoadSequence;
         currentMapId = mapId;
         states = mapStates[currentMapId];
+        hatchStates = mapHatchStates[currentMapId];
         mapSelect.value = mapId;
         pageTitle.textContent = `${config.name} · 密码机记录`;
         document.title = `${config.name}密码机地图`;
@@ -473,14 +683,21 @@
           if (!Array.isArray(data.candidates)) throw new Error("Invalid candidate data");
           if (sequence !== mapLoadSequence) return;
           pointData = data.candidates;
+          const hatchRecords = Array.isArray(data.hatches)
+            ? data.hatches
+            : (Array.isArray(data.hatches?.candidates) ? data.hatches.candidates : []);
+          hatchData = hatchRecords.filter(point => Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y)));
           DISTRIBUTIONS = Array.isArray(data.distributions)
             ? data.distributions.map((group, index) => ({ id: index + 1, points: group.points.map(Number) }))
             : [];
+          if (!options.keepShowHatches) showHatches = hatchData.length > 0;
           renderPoints();
         } catch {
           if (sequence !== mapLoadSequence) return;
           pointData = [];
+          hatchData = [];
           DISTRIBUTIONS = [];
+          if (!options.keepShowHatches) showHatches = false;
           renderPoints();
           showMessage("候选点数据加载失败，请确认通过本地 HTTP 服务器访问");
         }
@@ -505,9 +722,11 @@
       });
 
       document.querySelector("#reset").addEventListener("click", () => {
-        if (!confirm("重置本局所有密码机状态？")) return;
+        if (!confirm("重置本局所有密码机与地窖状态？")) return;
         states = {};
+        hatchStates = {};
         saveStates();
+        saveHatchStates();
         renderPoints();
         commitHistory();
         showMessage("已重置为可能刷新状态");
@@ -525,16 +744,8 @@
       });
 
       applyInferenceButton.addEventListener("click", () => {
-        let changed = 0;
-        certainPointIds.forEach(id => {
-          const state = currentState(id);
-          if (state === "possible") {
-            states[id] = "confirmed";
-            changed++;
-          }
-        });
+        const changed = applyCertainPredictions();
         if (changed) {
-          saveStates();
           renderPoints();
           commitHistory();
           showMessage(`已将 ${changed} 个推测必有点标为白色确认`);
@@ -542,6 +753,19 @@
           showMessage("绿色外圈的推测必有点已完成标记");
         }
       });
+
+      function applyCertainPredictions() {
+        let changed = 0;
+        certainPointIds.forEach(id => {
+          if (currentState(id) !== "possible") return;
+          states[id] = "confirmed";
+          const marker = map.querySelector('.candidate[data-id="' + id + '"]');
+          if (marker) updateMarker(marker, id);
+          changed++;
+        });
+        if (changed) saveStates();
+        return changed;
+      }
 
       lastHistorySnapshot = captureHistorySnapshot();
       updateHistoryButtons();

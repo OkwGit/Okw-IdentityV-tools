@@ -76,6 +76,32 @@
     .marker:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
     .map-alias { position: absolute; left: var(--x); top: var(--y); z-index: 2; transform: translate(-50%, 16px); max-width: 140px; overflow: hidden; padding: 2px 5px; border-radius: 5px; background: #11130fe8; color: #fff; font-size: 10px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
     .map-alias[hidden] { display: none; }
+    .hatch-marker {
+      position: absolute;
+      left: var(--x);
+      top: var(--y);
+      z-index: 1;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      transform: translate(-50%, -50%);
+      border: 2px solid #f0c6ff;
+      border-radius: 4px;
+      background: #c56bdb;
+      color: #2a1033;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+      box-shadow: 0 1px 8px #000d;
+      cursor: grab;
+      touch-action: none;
+    }
+    .hatch-marker:active { cursor: grabbing; }
+    .hatch-marker:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+    .hatch-alias { position: absolute; left: var(--x); top: var(--y); z-index: 2; transform: translate(-50%, 16px); max-width: 140px; overflow: hidden; padding: 2px 5px; border-radius: 5px; background: #201326e8; color: #f3d9ff; font-size: 10px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+    .hatch-alias[hidden] { display: none; }
     .side-card { padding: 12px; }
     .side-card h2 { margin: 0 0 5px; font-size: 15px; }
     .side-card p { margin: 0 0 10px; color: #b9bdad; font-size: 12px; line-height: 1.5; }
@@ -84,6 +110,7 @@
     .point-row { display: grid; grid-template-columns: 28px 1fr 36px; align-items: center; gap: 7px; font-size: 12px; }
     .point-alias { grid-column: 2 / 4; width: 100%; min-width: 0; border: 1px solid #42483a; border-radius: 7px; padding: 7px; background: #151711; color: #f4f2e8; font: inherit; }
     .point-number { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #dfa52f; color: #261d0c; font-weight: 800; }
+    .point-number.hatch { border-radius: 4px; background: #c56bdb; color: #2a1033; }
     .point-coord { color: #d5d8ca; font-variant-numeric: tabular-nums; }
     .point-row button { min-height: 34px; padding: 4px; color: #ffccbd; }
     .status { min-height: 18px; margin-top: 9px; color: #cbd9ae; font-size: 12px; }
@@ -99,6 +126,8 @@
     .preview-controls button:disabled, .preview-controls select:disabled { opacity: .45; cursor: not-allowed; }
     .marker[data-combo="match"] { z-index: 3; background: #43bd65; border-color: #c9ff9e; transform: translate(-50%, -50%) scale(1.2); }
     .marker[data-combo="other"] { opacity: .16; filter: grayscale(1); }
+    .toolbar .add-target { display: inline-flex; align-items: center; gap: 6px; color: #dce2cf; font-size: 13px; }
+    .toolbar .add-target select { min-height: 40px; border: 1px solid #59604e; border-radius: 9px; padding: 6px 9px; background: #282d23; color: #f4f2e8; font: inherit; }
     @media (max-width: 720px) {
       header { padding-top: max(12px, env(safe-area-inset-top)); }
       .layout { padding-inline: 8px; }
@@ -112,7 +141,7 @@
 <body>
   <header>
     <h1 id="mapTitle">地图标定</h1>
-    <p>点击地图放置密码机标记；按住标记拖动微调。坐标按地图分别保存在本机浏览器。</p>
+    <p>点击地图放置标记；按住标记拖动微调。密码机为圆形，地窖为方形（每图最多 3 个，可留空）。坐标按地图分别保存在本机浏览器。</p>
     <label class="map-select" for="mapSelect">当前地图
       <select id="mapSelect">
         <option value="ArmsFactory">军工厂</option>
@@ -130,6 +159,12 @@
   <main class="layout">
     <nav class="toolbar" aria-label="标定操作">
       <button class="primary" id="addMode" type="button" aria-pressed="true">添加点位：开启</button>
+      <label class="add-target" for="addTarget">添加目标
+        <select id="addTarget">
+          <option value="cipher">密码机（圆）</option>
+          <option value="hatch">地窖（方）</option>
+        </select>
+      </label>
       <button id="undo" type="button">撤销上一个</button>
       <button id="clear" type="button">清空全部</button>
       <button id="copy" type="button">复制坐标 JSON</button>
@@ -147,10 +182,13 @@
         </div>
       </section>
       <aside class="side-card">
-        <h2>标定点位 <span id="count">0</span></h2>
+        <h2>密码机点位 <span id="count">0</span></h2>
         <p>坐标为地图宽高的比例值，范围 0–1；拖动地图上的标记可微调。可粘贴 JSON 后点“导入下方 JSON”，也可导入 JSON 文件。</p>
         <p>首次点击“一键保存到项目”时选择项目根目录；覆盖旧 JSON 前，会先将旧版归档到 assests/data/archive 文件夹。</p>
         <div class="point-list" id="pointList"><div class="empty">点击地图添加第一个点位</div></div>
+        <h2>地窖候选点 <span id="hatchCount">0</span>/3</h2>
+        <p>地窖与密码机写在同一份 JSON 的 hatches 字段；不标则对局页不出现地窖功能。每局三个位置里只会出现其中一个。</p>
+        <div class="point-list" id="hatchList"><div class="empty">切换添加目标为地窖后，点击地图添加</div></div>
         <div class="status" id="status" aria-live="polite"></div>
         <h2>位置规律</h2>
       <p>严格格式：每组 7 个点位编号，用英文逗号分隔，并以英文分号结束；每组一行。编号对应上方列表。</p>
@@ -240,14 +278,21 @@
       const status = document.querySelector("#status");
       const count = document.querySelector("#count");
       const addModeButton = document.querySelector("#addMode");
+      const addTargetSelect = document.querySelector("#addTarget");
+      const hatchList = document.querySelector("#hatchList");
+      const hatchCount = document.querySelector("#hatchCount");
       const fileInput = document.querySelector("#fileInput");
+      const MAX_HATCHES = 3;
       let addMode = true;
+      let addTarget = "cipher";
       let currentMapId = "ArmsFactory";
       try {
         const savedMapId = localStorage.getItem(ACTIVE_MAP_KEY);
         if (MAPS[savedMapId]) currentMapId = savedMapId;
       } catch {}
       let points = [];
+      let hatchPoints = [];
+      let draggingLayer = "cipher";
       let distributionRulesText = "";
       let previewingGroup = null;
       let draggingId = null;
@@ -324,7 +369,7 @@
       function outputObject() {
         const mapInfo = MAPS[currentMapId];
         const validation = validateDistributionRules(distributionRulesText);
-        return {
+        const payload = {
           map: mapInfo.id,
           image: mapInfo.image,
           coordinateSystem: "normalized (0-1, origin at top-left)",
@@ -332,6 +377,15 @@
           distributionRulesText,
           distributions: validation.valid ? validation.groups : []
         };
+        if (hatchPoints.length) {
+          payload.hatches = {
+            rule: "exactly-one",
+            candidates: hatchPoints.slice(0, MAX_HATCHES).map((p, i) => ({
+              id: i + 1, x: +p.x.toFixed(4), y: +p.y.toFixed(4), alias: p.alias || ""
+            }))
+          };
+        }
+        return payload;
       }
 
       function validateDistributionRules(text) {
@@ -401,8 +455,20 @@
         });
       }
 
+      function loadStoredHatches(storageKey) {
+        try {
+          const raw = localStorage.getItem(`${storageKey}-hatches`);
+          return raw === null ? null : normalizePoints(JSON.parse(raw)).slice(0, MAX_HATCHES);
+        } catch { return []; }
+      }
+
       function savePoints() {
         try { localStorage.setItem(MAPS[currentMapId].storageKey, JSON.stringify(points)); } catch { /* Private browsing may disable local storage. */ }
+        try {
+          const hatchStorageKey = `${MAPS[currentMapId].storageKey}-hatches`;
+          if (hatchPoints.length) localStorage.setItem(hatchStorageKey, JSON.stringify(hatchPoints));
+          else localStorage.removeItem(hatchStorageKey);
+        } catch {}
         data.value = JSON.stringify(outputObject(), null, 2);
       }
 
@@ -438,13 +504,23 @@
         try { localStorage.setItem(ACTIVE_MAP_KEY, mapId); } catch {}
 
         let existing = {};
+        let dataLoadWarning = "";
         try {
           const response = await fetch(mapInfo.dataFile);
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           existing = await response.json();
-        } catch {}
+        } catch {
+          dataLoadWarning = location.protocol === "file:"
+            ? "当前通过 file:// 打开，浏览器会阻止读取地图 JSON。请通过 http://127.0.0.1:8000/calibrate.html 使用标定页。"
+            : `地图 JSON 加载失败（${mapInfo.dataFile}）；请检查服务器目录和文件名。`;
+        }
         const stored = loadStoredPoints(mapInfo.storageKey);
         points = stored !== null ? stored : normalizePoints(existing.candidates || existing.points || []);
+        const storedHatches = loadStoredHatches(mapInfo.storageKey);
+        const savedHatchCandidates = Array.isArray(existing.hatches)
+          ? existing.hatches
+          : (Array.isArray(existing.hatches?.candidates) ? existing.hatches.candidates : []);
+        hatchPoints = storedHatches !== null ? storedHatches : normalizePoints(savedHatchCandidates).slice(0, MAX_HATCHES);
         let savedRules = null;
         try { savedRules = localStorage.getItem(`${mapInfo.storageKey}-rules`); } catch {}
         distributionRulesText = savedRules !== null
@@ -456,7 +532,7 @@
               : mapInfo.defaultRulesText || ""));
         rules.value = distributionRulesText;
         if (sequence !== loadSequence) return;
-        render(message || `已切换到${mapInfo.name}，坐标与其他地图分开保存`);
+        render(dataLoadWarning || message || `已切换到${mapInfo.name}，坐标与其他地图分开保存`);
       }
 
       function importJsonText(text) {
@@ -485,8 +561,33 @@
             x, y, alias: String(record.alias ?? record.name ?? record.label ?? "").slice(0, 32)
           });
         }
-        if (points.length && !confirm(`导入的 ${imported.length} 个点位会替换当前 ${points.length} 个点位，继续吗？`)) return false;
+        if ((points.length || hatchPoints.length) && !confirm(`导入数据会替换当前 ${points.length} 个密码机点和 ${hatchPoints.length} 个地窖点，继续吗？`)) return false;
+        let importedHatches = [];
+        if (Object.prototype.hasOwnProperty.call(parsed, "hatches")) {
+          const hatchRecords = Array.isArray(parsed.hatches)
+            ? parsed.hatches
+            : (Array.isArray(parsed.hatches?.candidates) ? parsed.hatches.candidates : []);
+          if (hatchRecords.length > MAX_HATCHES) {
+            status.textContent = `导入失败：每张地图最多包含 ${MAX_HATCHES} 个地窖候选点`;
+            return false;
+          }
+          importedHatches = [];
+          for (const record of hatchRecords) {
+            const x = Number(record?.x);
+            const y = Number(record?.y);
+            if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) {
+              status.textContent = "导入失败：地窖点都需要 0–1 范围内的 x、y 坐标";
+              return false;
+            }
+            importedHatches.push({
+              id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}-${importedHatches.length}`,
+              x, y, alias: String(record.alias ?? record.name ?? record.label ?? "").slice(0, 32)
+            });
+          }
+          importedHatches = importedHatches.slice(0, MAX_HATCHES);
+        }
         points = imported;
+        hatchPoints = importedHatches;
         distributionRulesText = typeof parsed.distributionRulesText === "string"
           ? parsed.distributionRulesText
           : (Array.isArray(parsed.distributions)
@@ -501,6 +602,10 @@
       document.querySelector("#chooseFile").addEventListener("click", () => fileInput.click());
       document.querySelector("#importText").addEventListener("click", () => importJsonText(data.value));
       mapSelect.addEventListener("change", () => loadMap(mapSelect.value));
+      addTargetSelect.addEventListener("change", () => {
+        addTarget = addTargetSelect.value;
+        status.textContent = addTarget === "hatch" ? "点击地图添加地窖（最多 3 个）" : "点击地图添加密码机";
+      });
       rules.addEventListener("input", saveRules);
       previewToggle.addEventListener("click", () => {
         previewingGroup = previewingGroup === null ? Number(previewGroup.value) : null;
@@ -521,7 +626,7 @@
       });
 
       function render(message = "") {
-        map.querySelectorAll(".marker, .map-alias").forEach(el => el.remove());
+        map.querySelectorAll(".marker, .map-alias, .hatch-marker, .hatch-alias").forEach(el => el.remove());
         points.forEach((point, index) => {
           const marker = document.createElement("button");
           marker.type = "button";
@@ -530,6 +635,7 @@
           marker.style.setProperty("--x", `${point.x * 100}%`);
           marker.style.setProperty("--y", `${point.y * 100}%`);
           marker.setAttribute("aria-label", `密码机标记 ${index + 1}，按住拖动`);
+          marker.dataset.layer = "cipher";
           marker.dataset.pointId = point.id;
           marker.dataset.pointIndex = String(index + 1);
           marker.addEventListener("pointerdown", startDrag);
@@ -543,20 +649,54 @@
           mapAlias.hidden = !mapAlias.textContent;
           map.append(marker, mapAlias);
         });
+        hatchPoints.forEach((point, index) => {
+          const marker = document.createElement("button");
+          marker.type = "button";
+          marker.className = "hatch-marker";
+          marker.textContent = String(index + 1);
+          marker.style.setProperty("--x", `${point.x * 100}%`);
+          marker.style.setProperty("--y", `${point.y * 100}%`);
+          marker.setAttribute("aria-label", `地窖标记 ${index + 1}，按住拖动`);
+          marker.dataset.layer = "hatch";
+          marker.dataset.pointId = point.id;
+          marker.dataset.pointIndex = String(index + 1);
+          marker.addEventListener("pointerdown", startDrag);
+          marker.addEventListener("click", event => event.stopPropagation());
+          const hatchAlias = document.createElement("span");
+          hatchAlias.className = "hatch-alias";
+          hatchAlias.dataset.pointIndex = String(index + 1);
+          hatchAlias.style.setProperty("--x", `${point.x * 100}%`);
+          hatchAlias.style.setProperty("--y", `${point.y * 100}%`);
+          hatchAlias.textContent = point.alias || "";
+          hatchAlias.hidden = !hatchAlias.textContent;
+          map.append(marker, hatchAlias);
+        });
 
         count.textContent = points.length;
-        list.replaceChildren();
-        if (!points.length) {
+        hatchCount.textContent = hatchPoints.length;
+        renderPointList(list, points, "cipher");
+        renderPointList(hatchList, hatchPoints, "hatch");
+
+        savePoints();
+        updateRuleValidation();
+        if (message) status.textContent = message;
+      }
+
+      function renderPointList(container, layerPoints, layer) {
+        container.replaceChildren();
+        const typeName = layer === "hatch" ? "地窖" : "密码机";
+        if (!layerPoints.length) {
           const empty = document.createElement("div");
           empty.className = "empty";
-          empty.textContent = "点击地图添加第一个点位";
-          list.append(empty);
-        } else {
-          points.forEach((point, index) => {
+          empty.textContent = layer === "hatch" ? "切换添加目标为地窖后，点击地图添加" : "点击地图添加第一个点位";
+          container.append(empty);
+          return;
+        }
+        layerPoints.forEach((point, index) => {
             const row = document.createElement("div");
             row.className = "point-row";
             const number = document.createElement("span");
-            number.className = "point-number";
+            number.className = `point-number${layer === "hatch" ? " hatch" : ""}`;
             number.textContent = index + 1;
             const coords = document.createElement("span");
             coords.className = "point-coord";
@@ -565,12 +705,13 @@
             alias.className = "point-alias";
             alias.type = "text";
             alias.maxLength = 32;
-            alias.placeholder = `点位 ${index + 1} 的别称（可留空）`;
+            alias.placeholder = `${typeName} ${index + 1} 的别称（可留空）`;
             alias.value = point.alias || "";
-            alias.setAttribute("aria-label", `编辑点位 ${index + 1} 的别称`);
+            alias.setAttribute("aria-label", `编辑${typeName} ${index + 1} 的别称`);
             alias.addEventListener("input", () => {
               point.alias = alias.value;
-              const mapAlias = map.querySelector(`.map-alias[data-point-index="${index + 1}"]`);
+              const aliasClass = layer === "hatch" ? ".hatch-alias" : ".map-alias";
+              const mapAlias = map.querySelector(`${aliasClass}[data-point-index="${index + 1}"]`);
               if (mapAlias) {
                 mapAlias.textContent = point.alias;
                 mapAlias.hidden = !point.alias;
@@ -580,19 +721,15 @@
             const remove = document.createElement("button");
             remove.type = "button";
             remove.textContent = "删";
-            remove.setAttribute("aria-label", `删除标记 ${index + 1}`);
+            remove.setAttribute("aria-label", `删除${typeName}标记 ${index + 1}`);
             remove.addEventListener("click", () => {
-              points = points.filter(p => p.id !== point.id);
-              render("已删除该点位");
+              if (layer === "hatch") hatchPoints = hatchPoints.filter(p => p.id !== point.id);
+              else points = points.filter(p => p.id !== point.id);
+              render(`已删除${typeName}点位`);
             });
             row.append(number, coords, remove, alias);
-            list.append(row);
-          });
-        }
-
-        savePoints();
-        updateRuleValidation();
-        if (message) status.textContent = message;
+            container.append(row);
+        });
       }
 
       function getMapPoint(event) {
@@ -607,6 +744,7 @@
         event.preventDefault();
         event.stopPropagation();
         draggingId = event.currentTarget.dataset.pointId;
+        draggingLayer = event.currentTarget.dataset.layer;
         map.setPointerCapture(event.pointerId);
         movePoint(event);
       }
@@ -614,7 +752,8 @@
       function movePoint(event) {
         if (!draggingId) return;
         const position = getMapPoint(event);
-        const point = points.find(p => p.id === draggingId);
+        const activePoints = draggingLayer === "hatch" ? hatchPoints : points;
+        const point = activePoints.find(p => p.id === draggingId);
         if (point) {
           point.x = position.x;
           point.y = position.y;
@@ -623,10 +762,20 @@
       }
 
       map.addEventListener("pointerdown", event => {
-        if (!addMode || event.target.closest(".marker")) return;
+        if (!addMode || event.target.closest(".marker, .hatch-marker")) return;
         const position = getMapPoint(event);
-        points.push({ id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`, ...position });
-        render("已添加点位；可拖动标记微调");
+        const point = { id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`, ...position };
+        if (addTarget === "hatch") {
+          if (hatchPoints.length >= MAX_HATCHES) {
+            status.textContent = "每张地图最多标定 3 个地窖候选点。";
+            return;
+          }
+          hatchPoints.push(point);
+          render("已添加地窖候选点；可拖动方形标记微调");
+        } else {
+          points.push(point);
+          render("已添加密码机点位；可拖动圆形标记微调");
+        }
       });
 
       map.addEventListener("pointermove", movePoint);
@@ -642,14 +791,18 @@
       });
 
       document.querySelector("#undo").addEventListener("click", () => {
-        points.pop();
-        render("已撤销上一个点位");
+        const activePoints = addTarget === "hatch" ? hatchPoints : points;
+        if (!activePoints.length) return;
+        activePoints.pop();
+        render(`已撤销上一个${addTarget === "hatch" ? "地窖" : "密码机"}点位`);
       });
 
       document.querySelector("#clear").addEventListener("click", () => {
-        if (!points.length || !confirm("清空所有已标定点位？")) return;
-        points = [];
-        render("已清空全部点位");
+        const activePoints = addTarget === "hatch" ? hatchPoints : points;
+        if (!activePoints.length || !confirm(`清空所有${addTarget === "hatch" ? "地窖" : "密码机"}点位？`)) return;
+        if (addTarget === "hatch") hatchPoints = [];
+        else points = [];
+        render(`已清空全部${addTarget === "hatch" ? "地窖" : "密码机"}点位`);
       });
 
       document.querySelector("#copy").addEventListener("click", async () => {
