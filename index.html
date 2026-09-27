@@ -129,9 +129,14 @@
       <span class="legend-item hatch-legend" hidden><i class="swatch hatch-confirmed"></i>确认有地窖</span>
     </div>
     <label class="size-control" for="marker-size">
-      <span>图标大小</span>
+      <span>密码机图标大小</span>
       <input id="marker-size" type="range" min="12" max="64" step="1" value="20">
       <output class="size-value" id="marker-size-value" for="marker-size">20 px</output>
+    </label>
+    <label class="size-control" id="hatch-size-control" for="hatch-size" hidden>
+      <span>地窖图标大小</span>
+      <input id="hatch-size" type="range" min="12" max="64" step="1" value="20">
+      <output class="size-value" id="hatch-size-value" for="hatch-size">20 px</output>
     </label>
     <label class="size-control"><input id="show-center-dot" type="checkbox" checked>可能点位显示绿色中心点</label>
     <label class="size-control"><input id="show-aliases" type="checkbox">显示密码机别称</label>
@@ -202,6 +207,7 @@
       };
       const ACTIVE_MAP_KEY = "identityv-active-map-v1";
       const SIZE_KEY = "identityv-armsfactory-marker-size-v1";
+      const HATCH_SIZE_KEY = "identityv-hatch-marker-size-v1";
       const CENTER_DOT_KEY = "identityv-show-possible-center-dot-v1";
       const ALIAS_KEY = "identityv-armsfactory-show-aliases-v1";
       const AUTO_APPLY_KEY = "identityv-auto-apply-v1";
@@ -226,6 +232,9 @@
       const message = document.querySelector("#message");
       const sizeSlider = document.querySelector("#marker-size");
       const sizeOutput = document.querySelector("#marker-size-value");
+      const hatchSizeSlider = document.querySelector("#hatch-size");
+      const hatchSizeOutput = document.querySelector("#hatch-size-value");
+      const hatchSizeControl = document.querySelector("#hatch-size-control");
       const centerDotToggle = document.querySelector("#show-center-dot");
       const aliasToggle = document.querySelector("#show-aliases");
       const inferenceText = document.querySelector("#inference-text");
@@ -284,7 +293,7 @@
             pointStates: { ...mapStates[id] },
             hatchStates: { ...mapHatchStates[id] }
           }])),
-          controls: { markerSize: Number(sizeSlider.value), showAliases, showHatches, autoApply }
+          controls: { markerSize: Number(sizeSlider.value), hatchSize: Number(hatchSizeSlider.value), showAliases, showHatches, autoApply }
         });
       }
 
@@ -323,6 +332,7 @@
         try { localStorage.setItem(ALIAS_KEY, String(showAliases)); } catch {}
         try { localStorage.setItem(AUTO_APPLY_KEY, String(autoApply)); } catch {}
         applyMarkerSize(snapshot.controls?.markerSize, true);
+        applyHatchSize(snapshot.controls?.hatchSize, true);
         await loadMap(currentMapId, { keepShowHatches: true });
         lastHistorySnapshot = captureHistorySnapshot();
       }
@@ -346,7 +356,6 @@
       function applyMarkerSize(value, save = true) {
         const size = Math.max(12, Math.min(64, Number(value) || 20));
         document.documentElement.style.setProperty("--marker-size", size + "px");
-        document.documentElement.style.setProperty("--hatch-size", size + "px");
         sizeSlider.value = String(size);
         sizeOutput.value = size + " px";
         sizeOutput.textContent = size + " px";
@@ -355,11 +364,29 @@
         }
       }
 
+      function applyHatchSize(value, save = true) {
+        const size = Math.max(12, Math.min(64, Number(value) || 20));
+        document.documentElement.style.setProperty("--hatch-size", size + "px");
+        hatchSizeSlider.value = String(size);
+        hatchSizeOutput.value = size + " px";
+        hatchSizeOutput.textContent = size + " px";
+        if (save) {
+          try { localStorage.setItem(HATCH_SIZE_KEY, String(size)); } catch {}
+        }
+      }
+
       try { applyMarkerSize(localStorage.getItem(SIZE_KEY) || sizeSlider.value, false); }
       catch { applyMarkerSize(sizeSlider.value, false); }
       sizeSlider.addEventListener("input", () => applyMarkerSize(sizeSlider.value, false));
       sizeSlider.addEventListener("change", () => {
         applyMarkerSize(sizeSlider.value, true);
+        commitHistory();
+      });
+      try { applyHatchSize(localStorage.getItem(HATCH_SIZE_KEY) || hatchSizeSlider.value, false); }
+      catch { applyHatchSize(hatchSizeSlider.value, false); }
+      hatchSizeSlider.addEventListener("input", () => applyHatchSize(hatchSizeSlider.value, false));
+      hatchSizeSlider.addEventListener("change", () => {
+        applyHatchSize(hatchSizeSlider.value, true);
         commitHistory();
       });
       try {
@@ -699,6 +726,7 @@
             ? data.hatches
             : (Array.isArray(data.hatches?.candidates) ? data.hatches.candidates : []);
           hatchData = hatchRecords.filter(point => Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y)));
+          hatchSizeControl.hidden = hatchData.length === 0;
           DISTRIBUTIONS = Array.isArray(data.distributions)
             ? data.distributions.map((group, index) => ({ id: index + 1, points: group.points.map(Number) }))
             : [];
