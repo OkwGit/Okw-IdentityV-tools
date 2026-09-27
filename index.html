@@ -85,6 +85,15 @@
     .hatch[data-prediction="excluded"]:not([data-state="absent"]) { opacity: .24; filter: grayscale(1); }
     .hatch-label { position: absolute; left: var(--x); top: var(--y); z-index: 1; transform: translate(-50%, 13px); padding: 2px 5px; border-radius: 5px; background: #201326db; color: #f3d9ff; font-size: 10px; line-height: 1.2; white-space: nowrap; pointer-events: none; }
     .hatch[hidden], .hatch-label[hidden] { display: none; }
+    .custom-marker { position:absolute; left:var(--x); top:var(--y); z-index:1; width:var(--custom-size, 24px); aspect-ratio:1; display:grid; place-items:center; padding:0; transform:translate(-50%,-50%); border:2px solid #d9f2ff; border-radius:50%; background:#48a9d6; color:#102632; font:800 calc(var(--custom-size, 24px) * .5)/1 system-ui,sans-serif; box-shadow:0 1px 4px #0009; cursor:pointer; touch-action:manipulation; }
+    .custom-marker[data-shape="square"] { border-radius:4px; }
+    .custom-marker[data-shape="diamond"] { border-radius:3px; transform:translate(-50%,-50%) rotate(45deg); }
+    .custom-marker[data-state="absent"] { background:#e65f66; border-color:#ffc2c5; color:#fff; }
+    .custom-marker[data-state="confirmed"] { background:#55c873; border-color:#ddffe4; color:#0d3217; }
+    .custom-marker[hidden] { display:none; }
+    .custom-layer-control { display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:7px; margin:8px auto 0; color:#d4d7cb; font-size:12px; }
+    .custom-layer-control input[type="range"] { width:min(35vw,150px); accent-color:#aeb89d; }
+    .custom-layer-control output { min-width:38px; font-variant-numeric:tabular-nums; }
     .hatch:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
     .inference { max-width: 760px; margin: 8px auto 0; padding: 6px 9px; border: 1px solid #454c3b; border-radius: 8px; background: #1b2019; color: #dce5ce; font-size: 11px; line-height: 1.45; text-align: left; }
     .inference strong { color: #e8efdb; margin-right: 5px; }
@@ -141,6 +150,7 @@
     <label class="size-control"><input id="show-center-dot" type="checkbox" checked>可能点位显示绿色中心点</label>
     <label class="size-control"><input id="show-aliases" type="checkbox">显示密码机别称</label>
     <label class="size-control" id="hatch-toggle-row" hidden><input id="show-hatches" type="checkbox" checked>显示地窖</label>
+    <div id="custom-layer-controls"></div>
     <div class="inference" id="inference" role="status" aria-live="polite"><strong>分布推测</strong><span id="inference-text">正在读取候选点…</span><div class="inference-count">还有 <output id="unresolved-count">—</output> 台机子的位置无法推测</div><div class="inference-hatch" id="inference-hatch" hidden><strong>地窖推测</strong><span id="inference-hatch-text"></span></div></div>
     <div class="toolbar">
       <button id="undo" type="button" title="Ctrl+Z" disabled>撤销</button>
@@ -247,11 +257,14 @@
       const hatchToggle = document.querySelector("#show-hatches");
       const hatchInference = document.querySelector("#inference-hatch");
       const hatchInferenceText = document.querySelector("#inference-hatch-text");
+      const customLayerControls = document.querySelector("#custom-layer-controls");
       let showAliases = false;
       let showHatches = true;
       let autoApply = false;
       let pointData = [];
       let hatchData = [];
+      let customLayers = [];
+      let customLayerStates = {};
       let certainPointIds = [];
       const mapStates = Object.fromEntries(Object.entries(MAPS).map(([id, config]) => [id, loadStates(config.storageKey)]));
       const mapHatchStates = Object.fromEntries(Object.entries(MAPS).map(([id, config]) => [id, loadStates(hatchKey(config.storageKey))]));
@@ -285,6 +298,18 @@
         try { localStorage.setItem(hatchKey(MAPS[currentMapId].storageKey), JSON.stringify(hatchStates)); } catch {}
       }
 
+      function structuredCloneSafe(value) {
+        return JSON.parse(JSON.stringify(value));
+      }
+
+      function customLayerKey(layerId, suffix) {
+        return `identityv-${currentMapId}-${layerId}-${suffix}-v1`;
+      }
+
+      function saveCustomLayerStates(layerId) {
+        try { localStorage.setItem(customLayerKey(layerId, "states"), JSON.stringify(customLayerStates[layerId] || {})); } catch {}
+      }
+
       // Extend this snapshot with new maps and stateful controls so they share the same undo/redo history.
       function captureHistorySnapshot() {
         return JSON.stringify({
@@ -293,6 +318,7 @@
             pointStates: { ...mapStates[id] },
             hatchStates: { ...mapHatchStates[id] }
           }])),
+          customLayerStates: structuredCloneSafe(customLayerStates),
           controls: { markerSize: Number(sizeSlider.value), hatchSize: Number(hatchSizeSlider.value), showAliases, showHatches, autoApply }
         });
       }
@@ -326,6 +352,8 @@
         showAliases = Boolean(snapshot.controls?.showAliases);
         showHatches = snapshot.controls?.showHatches !== false;
         autoApply = Boolean(snapshot.controls?.autoApply);
+        customLayerStates = structuredCloneSafe(snapshot.customLayerStates || {});
+        Object.keys(customLayerStates).forEach(saveCustomLayerStates);
         aliasToggle.checked = showAliases;
         hatchToggle.checked = showHatches;
         autoApplyToggle.checked = autoApply;
@@ -542,6 +570,51 @@
         return marker;
       }
 
+      function makeCustomMarker(layer, point) {
+        const marker = document.createElement("button");
+        marker.type = "button"; marker.className = "custom-marker";
+        marker.dataset.layerId = layer.id; marker.dataset.shape = layer.shape || "circle";
+        marker.dataset.id = point.id; marker.dataset.state = customLayerStates[layer.id]?.[point.id] || "unknown";
+        marker.style.setProperty("--x", `${Number(point.x) * 100}%`); marker.style.setProperty("--y", `${Number(point.y) * 100}%`);
+        const size = Number(localStorage.getItem(customLayerKey(layer.id, "size"))) || 24;
+        marker.style.setProperty("--custom-size", `${Math.max(12, Math.min(64, size))}px`);
+        marker.textContent = marker.dataset.state === "absent" ? "×" : "";
+        marker.setAttribute("aria-label", `${layer.name} ${point.alias || point.id}：${marker.dataset.state === "unknown" ? "未知" : marker.dataset.state === "absent" ? "确认没有" : "确认存在"}`);
+        marker.title = `${layer.name}：点击依次切换未知、确认没有、确认存在`;
+        marker.addEventListener("click", () => {
+          const states = customLayerStates[layer.id] || (customLayerStates[layer.id] = {});
+          const cycle = ["unknown", "absent", "confirmed"];
+          states[point.id] = cycle[(cycle.indexOf(states[point.id] || "unknown") + 1) % cycle.length];
+          saveCustomLayerStates(layer.id);
+          renderPoints(); commitHistory();
+        });
+        return marker;
+      }
+
+      function renderCustomLayerControls() {
+        customLayerControls.replaceChildren();
+        customLayers.forEach(layer => {
+          if (!Array.isArray(layer.candidates) && !Array.isArray(layer.points)) return;
+          const row = document.createElement("label"); row.className = "custom-layer-control";
+          const toggle = document.createElement("input"); toggle.type = "checkbox";
+          const visibleKey = customLayerKey(layer.id, "visible");
+          try { toggle.checked = localStorage.getItem(visibleKey) !== "false"; } catch { toggle.checked = true; }
+          toggle.addEventListener("change", () => { try { localStorage.setItem(visibleKey, String(toggle.checked)); } catch {} renderPoints(); commitHistory(); });
+          const name = document.createElement("span"); name.textContent = `显示${layer.name}`;
+          const slider = document.createElement("input"); slider.type = "range"; slider.min = "12"; slider.max = "64"; slider.step = "1";
+          const sizeKey = customLayerKey(layer.id, "size");
+          let savedSize = 24; try { savedSize = Number(localStorage.getItem(sizeKey)) || 24; } catch {}
+          slider.value = String(Math.max(12, Math.min(64, savedSize)));
+          const output = document.createElement("output"); output.textContent = `${slider.value} px`;
+          slider.addEventListener("input", () => {
+            output.textContent = `${slider.value} px`;
+            map.querySelectorAll(".custom-marker").forEach(marker => { if (marker.dataset.layerId === layer.id) marker.style.setProperty("--custom-size", `${slider.value}px`); });
+          });
+          slider.addEventListener("change", () => { try { localStorage.setItem(sizeKey, slider.value); } catch {} commitHistory(); });
+          row.append(toggle, name, slider, output); customLayerControls.append(row);
+        });
+      }
+
       function formatHatchIds(ids) {
         return ids.map(id => {
           const point = hatchData.find(item => Number(item.id) === id);
@@ -678,7 +751,7 @@
       }
 
       function renderPoints() {
-        map.querySelectorAll(".candidate, .candidate-label, .hatch, .hatch-label").forEach(element => element.remove());
+        map.querySelectorAll(".candidate, .candidate-label, .hatch, .hatch-label, .custom-marker").forEach(element => element.remove());
         pointData.forEach(point => {
           const marker = makeMarker(point);
           map.append(marker);
@@ -689,6 +762,13 @@
           map.append(marker);
           marker.after(marker.aliasLabel);
         });
+        customLayers.forEach(layer => {
+          let visible = true; try { visible = localStorage.getItem(customLayerKey(layer.id, "visible")) !== "false"; } catch {}
+          (layer.candidates || []).forEach(point => {
+            const marker = makeCustomMarker(layer, point); marker.hidden = !visible; map.append(marker);
+          });
+        });
+        renderCustomLayerControls();
         syncHatchVisibility();
         renderInference();
       }
@@ -727,6 +807,9 @@
             : (Array.isArray(data.hatches?.candidates) ? data.hatches.candidates : []);
           hatchData = hatchRecords.filter(point => Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y)));
           hatchSizeControl.hidden = hatchData.length === 0;
+          customLayers = Array.isArray(data.markers) ? data.markers.filter(layer => layer && typeof layer.id === "string" && typeof layer.name === "string" && Array.isArray(layer.candidates)) : [];
+          customLayerStates = Object.fromEntries(customLayers.map(layer => [layer.id, options.resetCustomStates ? {} : loadStates(customLayerKey(layer.id, "states"))]));
+          if (options.resetCustomStates) Object.keys(customLayerStates).forEach(saveCustomLayerStates);
           DISTRIBUTIONS = Array.isArray(data.distributions)
             ? data.distributions.map((group, index) => ({ id: index + 1, points: group.points.map(Number) }))
             : [];
@@ -736,6 +819,8 @@
           if (sequence !== mapLoadSequence) return;
           pointData = [];
           hatchData = [];
+          customLayers = [];
+          customLayerStates = {};
           DISTRIBUTIONS = [];
           if (!options.keepShowHatches) showHatches = false;
           renderPoints();
@@ -754,10 +839,11 @@
         if (nextMapId !== currentMapId) {
           mapStates[nextMapId] = {};
           mapHatchStates[nextMapId] = {};
+          customLayerStates = {};
           try { localStorage.setItem(MAPS[nextMapId].storageKey, "{}"); } catch {}
           try { localStorage.setItem(hatchKey(MAPS[nextMapId].storageKey), "{}"); } catch {}
         }
-        await loadMap(nextMapId);
+        await loadMap(nextMapId, { resetCustomStates: true });
         const next = captureHistorySnapshot();
         if (next !== previous) {
           undoStack.push(previous);
@@ -766,13 +852,15 @@
           lastHistorySnapshot = next;
           updateHistoryButtons();
         }
-        if (nextMapId !== previous.activeMap) showMessage("已切换地图，本局密码机和地窖状态已重置");
+        if (nextMapId !== previous.activeMap) showMessage("已切换地图，本局密码机、地窖和自定义标记状态已重置");
       });
 
       document.querySelector("#reset").addEventListener("click", () => {
-        if (!confirm("重置本局所有密码机与地窖状态？")) return;
+        if (!confirm("重置本局所有密码机、地窖与自定义标记状态？")) return;
         states = {};
         hatchStates = {};
+        customLayerStates = Object.fromEntries(customLayers.map(layer => [layer.id, {}]));
+        Object.keys(customLayerStates).forEach(saveCustomLayerStates);
         saveStates();
         saveHatchStates();
         renderPoints();

@@ -102,6 +102,10 @@
     .hatch-marker:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
     .hatch-alias { position: absolute; left: var(--x); top: var(--y); z-index: 2; transform: translate(-50%, 16px); max-width: 140px; overflow: hidden; padding: 2px 5px; border-radius: 5px; background: #201326e8; color: #f3d9ff; font-size: 10px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
     .hatch-alias[hidden] { display: none; }
+    .custom-marker { position:absolute; left:var(--x); top:var(--y); z-index:1; width:30px; height:30px; display:grid; place-items:center; padding:0; transform:translate(-50%,-50%); border:2px solid #d9f2ff; border-radius:50%; background:#48a9d6; color:#102632; font-size:12px; font-weight:800; box-shadow:0 1px 8px #000d; cursor:grab; touch-action:none; }
+    .custom-marker[data-shape="square"] { border-radius:4px; }
+    .custom-marker[data-shape="diamond"] { border-radius:3px; transform:translate(-50%,-50%) rotate(45deg); }
+    .custom-alias { position:absolute; left:var(--x); top:var(--y); z-index:2; transform:translate(-50%,16px); padding:2px 5px; border-radius:5px; background:#11130fe8; color:#fff; font-size:10px; white-space:nowrap; pointer-events:none; }
     .side-card { padding: 12px; }
     .side-card h2 { margin: 0 0 5px; font-size: 15px; }
     .side-card p { margin: 0 0 10px; color: #b9bdad; font-size: 12px; line-height: 1.5; }
@@ -111,6 +115,7 @@
     .point-alias { grid-column: 2 / 4; width: 100%; min-width: 0; border: 1px solid #42483a; border-radius: 7px; padding: 7px; background: #151711; color: #f4f2e8; font: inherit; }
     .point-number { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #dfa52f; color: #261d0c; font-weight: 800; }
     .point-number.hatch { border-radius: 4px; background: #c56bdb; color: #2a1033; }
+    .point-number.custom { border-radius: 4px; background: #48a9d6; color: #102632; }
     .point-coord { color: #d5d8ca; font-variant-numeric: tabular-nums; }
     .point-row button { min-height: 34px; padding: 4px; color: #ffccbd; }
     .status { min-height: 18px; margin-top: 9px; color: #cbd9ae; font-size: 12px; }
@@ -141,7 +146,7 @@
 <body>
   <header>
     <h1 id="mapTitle">地图标定</h1>
-    <p>点击地图放置标记；按住标记拖动微调。密码机为圆形，地窖为方形，地窖候选点数量不限。坐标按地图分别保存在本机浏览器。</p>
+    <p>点击地图放置标记；按住标记拖动微调。密码机为圆形，地窖为方形；可用“新建标记类型”添加自命名的圆形、方形或菱形标记。坐标按地图分别保存在本机浏览器。</p>
     <label class="map-select" for="mapSelect">当前地图
       <select id="mapSelect">
         <option value="ArmsFactory">军工厂</option>
@@ -165,6 +170,7 @@
           <option value="hatch">地窖（方）</option>
         </select>
       </label>
+      <button id="addMarkerType" type="button">＋ 新建标记类型</button>
       <button id="undo" type="button">撤销上一个</button>
       <button id="clear" type="button">清空全部</button>
       <button id="copy" type="button">复制坐标 JSON</button>
@@ -189,6 +195,7 @@
         <h2>地窖候选点 <span id="hatchCount">0</span></h2>
         <p>地窖与密码机写在同一份 JSON 的 hatches 字段；不标则对局页不出现地窖功能。每局所有候选点中只会有一个地窖。</p>
         <div class="point-list" id="hatchList"><div class="empty">切换添加目标为地窖后，点击地图添加</div></div>
+        <div id="customTypeLists"></div>
         <div class="status" id="status" aria-live="polite"></div>
         <h2>位置规律</h2>
       <p>严格格式：每组 7 个点位编号，用英文逗号分隔，并以英文分号结束；每组一行。编号对应上方列表。</p>
@@ -281,6 +288,7 @@
       const addTargetSelect = document.querySelector("#addTarget");
       const hatchList = document.querySelector("#hatchList");
       const hatchCount = document.querySelector("#hatchCount");
+      const customTypeLists = document.querySelector("#customTypeLists");
       const fileInput = document.querySelector("#fileInput");
       let addMode = true;
       let addTarget = "cipher";
@@ -291,6 +299,7 @@
       } catch {}
       let points = [];
       let hatchPoints = [];
+      let customLayers = [];
       let draggingLayer = "cipher";
       let distributionRulesText = "";
       let previewingGroup = null;
@@ -384,6 +393,10 @@
             }))
           };
         }
+        if (customLayers.length) payload.markers = customLayers.map(layer => ({
+          id: layer.id, name: layer.name, shape: layer.shape,
+          candidates: layer.points.map((p, i) => ({ id: i + 1, x: +p.x.toFixed(4), y: +p.y.toFixed(4), alias: p.alias || "" }))
+        }));
         return payload;
       }
 
@@ -468,7 +481,14 @@
           if (hatchPoints.length) localStorage.setItem(hatchStorageKey, JSON.stringify(hatchPoints));
           else localStorage.removeItem(hatchStorageKey);
         } catch {}
+        try { localStorage.setItem(`${MAPS[currentMapId].storageKey}-markers`, JSON.stringify(customLayers)); } catch {}
         data.value = JSON.stringify(outputObject(), null, 2);
+      }
+
+      function getLayerPoints(layerId) {
+        if (layerId === "hatch") return hatchPoints;
+        if (layerId === "cipher") return points;
+        return customLayers.find(layer => layer.id === layerId)?.points || [];
       }
 
       function saveRules() {
@@ -520,6 +540,18 @@
           ? existing.hatches
           : (Array.isArray(existing.hatches?.candidates) ? existing.hatches.candidates : []);
         hatchPoints = storedHatches !== null ? storedHatches : normalizePoints(savedHatchCandidates);
+        let storedMarkers = null;
+        try {
+          const rawMarkers = localStorage.getItem(`${mapInfo.storageKey}-markers`);
+          storedMarkers = rawMarkers === null ? null : JSON.parse(rawMarkers);
+        } catch { storedMarkers = []; }
+        const markerRecords = Array.isArray(existing.markers) ? existing.markers : [];
+        customLayers = (storedMarkers !== null ? storedMarkers : markerRecords).filter(layer => layer && typeof layer.name === "string")
+          .map((layer, index) => ({
+            id: String(layer.id || `custom-${index + 1}`), name: layer.name.slice(0, 32),
+            shape: ["circle", "square", "diamond"].includes(layer.shape) ? layer.shape : "circle",
+            points: normalizePoints(layer.candidates || layer.points || [])
+          }));
         let savedRules = null;
         try { savedRules = localStorage.getItem(`${mapInfo.storageKey}-rules`); } catch {}
         distributionRulesText = savedRules !== null
@@ -560,7 +592,7 @@
             x, y, alias: String(record.alias ?? record.name ?? record.label ?? "").slice(0, 32)
           });
         }
-        if ((points.length || hatchPoints.length) && !confirm(`导入数据会替换当前 ${points.length} 个密码机点和 ${hatchPoints.length} 个地窖点，继续吗？`)) return false;
+        if ((points.length || hatchPoints.length || customLayers.length) && !confirm(`导入数据会替换当前 ${points.length} 个密码机点、${hatchPoints.length} 个地窖点和 ${customLayers.length} 个自定义类型，继续吗？`)) return false;
         let importedHatches = [];
         if (Object.prototype.hasOwnProperty.call(parsed, "hatches")) {
           const hatchRecords = Array.isArray(parsed.hatches)
@@ -582,6 +614,12 @@
         }
         points = imported;
         hatchPoints = importedHatches;
+        customLayers = (Array.isArray(parsed.markers) ? parsed.markers : []).filter(layer => layer && typeof layer.name === "string")
+          .map((layer, index) => ({
+            id: String(layer.id || `custom-${index + 1}`), name: layer.name.slice(0, 32),
+            shape: ["circle", "square", "diamond"].includes(layer.shape) ? layer.shape : "circle",
+            points: normalizePoints(layer.candidates || layer.points || [])
+          }));
         distributionRulesText = typeof parsed.distributionRulesText === "string"
           ? parsed.distributionRulesText
           : (Array.isArray(parsed.distributions)
@@ -598,7 +636,22 @@
       mapSelect.addEventListener("change", () => loadMap(mapSelect.value));
       addTargetSelect.addEventListener("change", () => {
         addTarget = addTargetSelect.value;
-        status.textContent = addTarget === "hatch" ? "点击地图添加地窖候选点（数量不限）" : "点击地图添加密码机";
+        status.textContent = addTarget === "hatch" ? "点击地图添加地窖候选点（数量不限）" : addTarget === "cipher" ? "点击地图添加密码机" : `点击地图添加${customLayers.find(layer => layer.id === addTarget)?.name || "标记"}`;
+      });
+      document.querySelector("#addMarkerType").addEventListener("click", () => {
+        const name = prompt("输入新标记类型名称（例如：大门、出生点、监管者位置）")?.trim().slice(0, 32);
+        if (!name) return;
+        const shapeChoice = prompt("选择图标形状：circle（圆）、square（方）、diamond（菱形）", "circle")?.trim().toLowerCase();
+        if (!shapeChoice) return;
+        const shape = ({ circle: "circle", "圆": "circle", square: "square", "方": "square", diamond: "diamond", "菱形": "diamond" })[shapeChoice];
+        if (!shape) { status.textContent = "形状请输入 circle、square 或 diamond"; return; }
+        const id = `custom-${Date.now()}`;
+        customLayers.push({ id, name, shape, points: [] });
+        const option = document.createElement("option");
+        option.value = id; option.textContent = `${name}（${shape === "square" ? "方" : shape === "diamond" ? "菱形" : "圆"}）`;
+        addTargetSelect.append(option);
+        addTargetSelect.value = id; addTarget = id;
+        render(`已创建“${name}”标记类型；现在可点击地图添加点位`);
       });
       rules.addEventListener("input", saveRules);
       previewToggle.addEventListener("click", () => {
@@ -620,7 +673,11 @@
       });
 
       function render(message = "") {
-        map.querySelectorAll(".marker, .map-alias, .hatch-marker, .hatch-alias").forEach(el => el.remove());
+        map.querySelectorAll(".marker, .map-alias, .hatch-marker, .hatch-alias, .custom-marker, .custom-alias").forEach(el => el.remove());
+        [...addTargetSelect.options].filter(option => !["cipher", "hatch"].includes(option.value)).forEach(option => option.remove());
+        customLayers.forEach(layer => { const option = document.createElement("option"); option.value = layer.id; option.textContent = `${layer.name}（自定义）`; addTargetSelect.append(option); });
+        if ([...addTargetSelect.options].some(option => option.value === addTarget)) addTargetSelect.value = addTarget;
+        else { addTarget = "cipher"; addTargetSelect.value = "cipher"; }
         points.forEach((point, index) => {
           const marker = document.createElement("button");
           marker.type = "button";
@@ -665,11 +722,30 @@
           hatchAlias.hidden = !hatchAlias.textContent;
           map.append(marker, hatchAlias);
         });
+        customLayers.forEach(layer => layer.points.forEach((point, index) => {
+          const marker = document.createElement("button");
+          marker.type = "button"; marker.className = "custom-marker"; marker.textContent = String(index + 1);
+          marker.dataset.shape = layer.shape; marker.dataset.layer = layer.id; marker.dataset.pointId = point.id;
+          marker.style.setProperty("--x", `${point.x * 100}%`); marker.style.setProperty("--y", `${point.y * 100}%`);
+          marker.setAttribute("aria-label", `${layer.name}标记 ${index + 1}，按住拖动`);
+          marker.addEventListener("pointerdown", startDrag); marker.addEventListener("click", event => event.stopPropagation());
+          const alias = document.createElement("span"); alias.className = "custom-alias"; alias.dataset.layer = layer.id; alias.dataset.pointIndex = String(index + 1);
+          alias.style.setProperty("--x", `${point.x * 100}%`); alias.style.setProperty("--y", `${point.y * 100}%`); alias.textContent = point.alias || ""; alias.hidden = !alias.textContent;
+          map.append(marker, alias);
+        }));
 
         count.textContent = points.length;
         hatchCount.textContent = hatchPoints.length;
         renderPointList(list, points, "cipher");
         renderPointList(hatchList, hatchPoints, "hatch");
+        customTypeLists.replaceChildren();
+        customLayers.forEach(layer => {
+          const title = document.createElement("h2"); title.textContent = `${layer.name} `;
+          const total = document.createElement("span"); total.textContent = layer.points.length; title.append(total);
+          const list = document.createElement("div"); list.className = "point-list";
+          customTypeLists.append(title, list);
+          renderPointList(list, layer.points, layer.id);
+        });
 
         savePoints();
         updateRuleValidation();
@@ -678,11 +754,11 @@
 
       function renderPointList(container, layerPoints, layer) {
         container.replaceChildren();
-        const typeName = layer === "hatch" ? "地窖" : "密码机";
+        const typeName = layer === "hatch" ? "地窖" : layer === "cipher" ? "密码机" : (customLayers.find(item => item.id === layer)?.name || "标记");
         if (!layerPoints.length) {
           const empty = document.createElement("div");
           empty.className = "empty";
-          empty.textContent = layer === "hatch" ? "切换添加目标为地窖后，点击地图添加" : "点击地图添加第一个点位";
+          empty.textContent = `选择“${typeName}”作为添加目标后，点击地图添加点位`;
           container.append(empty);
           return;
         }
@@ -690,7 +766,7 @@
             const row = document.createElement("div");
             row.className = "point-row";
             const number = document.createElement("span");
-            number.className = `point-number${layer === "hatch" ? " hatch" : ""}`;
+            number.className = `point-number${layer === "hatch" ? " hatch" : layer !== "cipher" ? " custom" : ""}`;
             number.textContent = index + 1;
             const coords = document.createElement("span");
             coords.className = "point-coord";
@@ -704,8 +780,11 @@
             alias.setAttribute("aria-label", `编辑${typeName} ${index + 1} 的别称`);
             alias.addEventListener("input", () => {
               point.alias = alias.value;
-              const aliasClass = layer === "hatch" ? ".hatch-alias" : ".map-alias";
-              const mapAlias = map.querySelector(`${aliasClass}[data-point-index="${index + 1}"]`);
+              const aliasClass = layer === "hatch" ? ".hatch-alias" : layer === "cipher" ? ".map-alias" : ".custom-alias";
+              const mapAlias = [...map.querySelectorAll(aliasClass)].find(item =>
+                item.dataset.pointIndex === String(index + 1) &&
+                ((layer === "cipher" || layer === "hatch") || item.dataset.layer === layer)
+              );
               if (mapAlias) {
                 mapAlias.textContent = point.alias;
                 mapAlias.hidden = !point.alias;
@@ -717,8 +796,11 @@
             remove.textContent = "删";
             remove.setAttribute("aria-label", `删除${typeName}标记 ${index + 1}`);
             remove.addEventListener("click", () => {
-              if (layer === "hatch") hatchPoints = hatchPoints.filter(p => p.id !== point.id);
-              else points = points.filter(p => p.id !== point.id);
+              const layerPoints = getLayerPoints(layer);
+              const retained = layerPoints.filter(p => p.id !== point.id);
+              if (layer === "hatch") hatchPoints = retained;
+              else if (layer === "cipher") points = retained;
+              else { const custom = customLayers.find(item => item.id === layer); if (custom) custom.points = retained; }
               render(`已删除${typeName}点位`);
             });
             row.append(number, coords, remove, alias);
@@ -746,7 +828,7 @@
       function movePoint(event) {
         if (!draggingId) return;
         const position = getMapPoint(event);
-        const activePoints = draggingLayer === "hatch" ? hatchPoints : points;
+        const activePoints = getLayerPoints(draggingLayer);
         const point = activePoints.find(p => p.id === draggingId);
         if (point) {
           point.x = position.x;
@@ -756,15 +838,20 @@
       }
 
       map.addEventListener("pointerdown", event => {
-        if (!addMode || event.target.closest(".marker, .hatch-marker")) return;
+        if (!addMode || event.target.closest(".marker, .hatch-marker, .custom-marker")) return;
         const position = getMapPoint(event);
         const point = { id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`, ...position };
         if (addTarget === "hatch") {
           hatchPoints.push(point);
           render("已添加地窖候选点；可拖动方形标记微调");
-        } else {
+        } else if (addTarget === "cipher") {
           points.push(point);
           render("已添加密码机点位；可拖动圆形标记微调");
+        } else {
+          const layer = customLayers.find(item => item.id === addTarget);
+          if (!layer) return;
+          layer.points.push(point);
+          render(`已添加${layer.name}标记；可拖动微调`);
         }
       });
 
@@ -781,18 +868,20 @@
       });
 
       document.querySelector("#undo").addEventListener("click", () => {
-        const activePoints = addTarget === "hatch" ? hatchPoints : points;
+        const activePoints = getLayerPoints(addTarget);
         if (!activePoints.length) return;
         activePoints.pop();
-        render(`已撤销上一个${addTarget === "hatch" ? "地窖" : "密码机"}点位`);
+        render(`已撤销上一个${addTarget === "hatch" ? "地窖" : addTarget === "cipher" ? "密码机" : customLayers.find(layer => layer.id === addTarget)?.name || "自定义"}点位`);
       });
 
       document.querySelector("#clear").addEventListener("click", () => {
-        const activePoints = addTarget === "hatch" ? hatchPoints : points;
-        if (!activePoints.length || !confirm(`清空所有${addTarget === "hatch" ? "地窖" : "密码机"}点位？`)) return;
+        const activePoints = getLayerPoints(addTarget);
+        const activeTypeName = addTarget === "hatch" ? "地窖" : addTarget === "cipher" ? "密码机" : customLayers.find(layer => layer.id === addTarget)?.name || "自定义";
+        if (!activePoints.length || !confirm(`清空所有${activeTypeName}点位？`)) return;
         if (addTarget === "hatch") hatchPoints = [];
-        else points = [];
-        render(`已清空全部${addTarget === "hatch" ? "地窖" : "密码机"}点位`);
+        else if (addTarget === "cipher") points = [];
+        else { const layer = customLayers.find(item => item.id === addTarget); if (layer) layer.points = []; }
+        render(`已清空全部${addTarget === "hatch" ? "地窖" : addTarget === "cipher" ? "密码机" : customLayers.find(layer => layer.id === addTarget)?.name || "自定义"}点位`);
       });
 
       document.querySelector("#copy").addEventListener("click", async () => {
